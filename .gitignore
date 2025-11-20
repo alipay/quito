@@ -1,0 +1,149 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually creates a dist/ folder and a build/ folder:
+dist/
+build/
+*.spec
+
+# Virtualenv
+.venv/
+.ENV/
+env.bak/
+venv.bak/
+
+# Pyre type checker
+.pyre/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython history
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pydantic
+.pydantic/
+
+# pytest
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.coverage
+.cache
+.pytest_cache/
+
+# To ignore logs, outputs, results, datasets, models
+logs/
+*.log
+outputs/
+results/
+runs/
+/models/
+saved_models/
+checkpoints/
+*.h5
+*.hdf5
+*.ckpt
+*.pth
+*.pt
+*.tflite
+*.onnx
+
+# Datasets
+/data/
+*.csv
+*.tsv
+*.dat
+*.npz
+*.npy
+
+# Matplotlib, seaborn, etc. generated images
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+
+# VS Code, PyCharm, etc
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Editor-specific files
+*.swp
+*.swo
+*.bak
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Other
+.env
+.env.*
+*.local
