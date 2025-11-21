@@ -135,10 +135,10 @@ class BaseModel(nn.Module, ABC):
         # Create model instance
         model = cls(config, **kwargs)
         
-        # Load state dict
+        # Load state dict with proper device handling
         state_dict = torch.load(
             model_path / "pytorch_model.bin",
-            map_location=model.device
+            map_location=torch.device(model.device)
         )
         model.load_state_dict(state_dict)
         

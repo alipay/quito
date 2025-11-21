@@ -205,7 +205,7 @@ class BaseTrainer(ABC):
             save_strategies.append(StrategyType.STEPS)
         
         if self.config.logging_epochs and self.config.logging_epochs >= 1:
-            eval_strategies.append(StrategyType.EPOCHS)
+            logging_strategies.append(StrategyType.EPOCHS)
         
         if self.config.logging_steps and self.config.logging_steps >= 1:
             logging_strategies.append(StrategyType.STEPS)
@@ -288,8 +288,8 @@ class BaseTrainer(ABC):
             self._load_checkpoint(checkpoint)
             
             logging.info('Checkpoint loaded from {}'.format(checkpoint_path))
-        
-        logging.info('Perform training from scratch ...')
+        else:
+            logging.info('Perform training from scratch ...')
         
     def _load_checkpoint(self, checkpoint):
         self.actual_model.load(checkpoint)
@@ -688,7 +688,7 @@ class BaseTrainer(ABC):
         sync metric for all devices
         """
         if not torch.is_tensor(metric):
-            metric = torch.tensor(metric, device=self.model.device)
+            metric = torch.tensor(metric, device=self.device)
         
         # Only sync if distributed is initialized and world size > 1
         if dist.is_initialized() and self.world_size > 1:

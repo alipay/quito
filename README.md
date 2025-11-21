@@ -53,6 +53,8 @@ quito-10b/
 │   ├── eval_chronos.py            # Evaluate Chronos (zero-shot)
 │   ├── eval_moriai.py             # Evaluate Moirai (zero-shot)
 │   ├── create_data.py             # Generate test data
+│   ├── analyze_dataset_quality.py # Analyze dataset quality
+│   ├── compare_datasets_quality.py # Compare multiple datasets
 │   ├── configs/                   # Model configurations
 │   │   ├── patchtst.yaml
 │   │   ├── huggingface.yaml
@@ -68,11 +70,14 @@ quito-10b/
 │   ├── models/                    # Model implementations
 │   ├── config/                    # Configuration classes
 │   ├── trainers/                  # Training logic
+│   ├── utils/                     # Utilities
+│   │   └── dataset_quality.py    # Dataset quality analysis
 │   └── datasets.py                # Data loading
 ├── docs/                          # Documentation
 │   ├── TRAINING.md                # Training guide
 │   ├── EVALUATION.md              # Evaluation guide
-│   └── EXAMPLES.md                # Examples explained
+│   ├── EXAMPLES.md                # Examples explained
+│   └── DATASET_QUALITY.md         # Dataset quality analysis
 ├── configs/                       # Default configurations
 │   └── config.yaml
 └── requirements-optional.txt      # Optional model dependencies
@@ -100,6 +105,7 @@ quito-10b/
 ✅ **Lightweight**: Minimal dependencies  
 ✅ **Flexible**: Easy to customize configs  
 ✅ **Production**: Supports multi-GPU training  
+✨ **Dataset Quality Analysis**: Comprehensive toolkit for evaluating time series quality  
 
 ## GPU Training
 
@@ -132,6 +138,48 @@ training:
   learning_rate: 0.0001
 ```
 
+## Dataset Quality Analysis
+
+QUITO includes a comprehensive toolkit for evaluating time series dataset quality before training:
+
+```bash
+# Analyze a single dataset
+python examples/analyze_dataset_quality.py
+
+# Compare multiple datasets
+python examples/compare_datasets_quality.py
+```
+
+**Key Metrics**:
+- 📊 **Forecastability** (0-1): How predictable is the series?
+- 🔄 **Seasonality Strength** (0-1): Strength of seasonal patterns
+- ❌ **Missing Ratio**: Fraction of missing data
+- 📏 **Effective Length**: Non-NaN data points
+- 🎯 **Quality Score**: Composite metric for ranking datasets
+
+**Programmatic Usage**:
+```python
+from quito.utils.dataset_quality import evaluate_dataset, compare_datasets
+
+# Evaluate single dataset
+results = evaluate_dataset(series_list, period=24)
+print(f"Forecastability: {results['weighted_metrics']['forecastability']:.3f}")
+
+# Compare multiple datasets
+summaries = compare_datasets({
+    "Dataset_A": series_list_a,
+    "Dataset_B": series_list_b,
+})
+```
+
+**Quality Score Interpretation**:
+- **0.8-1.0**: Excellent - Use for primary training
+- **0.6-0.8**: Good - Suitable for most tasks
+- **0.4-0.6**: Fair - Consider preprocessing
+- **0.0-0.4**: Poor - Investigate quality issues
+
+See **[docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md)** for full documentation.
+
 ## Dependencies
 
 **Core Dependencies** (in `requirements.txt`):
@@ -141,7 +189,12 @@ training:
 - **Chronos**: `pip install git+https://github.com/amazon-science/chronos-forecasting.git`
 - **Moirai**: `pip install uni2ts`
 
-> 💡 **Tip**: Only install the optional dependencies for models you plan to use!
+**Optional Analysis Dependencies** (in `requirements-optional.txt`):
+- **Dataset Quality (full features)**: `pip install statsmodels arch matplotlib`
+  - Core metrics work with base dependencies
+  - Optional: `statsmodels` (seasonality), `arch` (ADF test), `matplotlib` (plotting)
+
+> 💡 **Tip**: Only install the optional dependencies for features you plan to use!
 
 ## Documentation
 
@@ -165,6 +218,12 @@ training:
   - Configuration files
   - Common patterns
 
+- **[docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md)** - Dataset quality analysis
+  - Quality metrics explained
+  - Forecastability and seasonality
+  - Cross-dataset comparison
+  - API reference and examples
+
 ### 🎯 Quick Navigation
 
 | I want to... | Go to... |
@@ -172,6 +231,7 @@ training:
 | Train a model on my data | [docs/TRAINING.md](docs/TRAINING.md) |
 | Use pre-trained models (zero-shot) | [docs/EVALUATION.md](docs/EVALUATION.md) |
 | Understand example scripts | [docs/EXAMPLES.md](docs/EXAMPLES.md) |
+| Evaluate dataset quality | [docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md) |
 | Use multiple GPUs | [docs/TRAINING.md](docs/TRAINING.md) → Multi-GPU Training |
 | Troubleshoot errors | [docs/TRAINING.md](docs/TRAINING.md) → Troubleshooting |
 

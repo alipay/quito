@@ -11,15 +11,6 @@ import torch
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any, Union
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from statsmodels.tsa.seasonal import STL, seasonal_decompose
-
-from quito.config.data import Freq
-
-
-FREQ_MAPPING = {
-        Freq.H: 24,
-        Freq.M: 60
-    }
 
 def create_data_directory_structure(base_path: Union[str, Path] = "./data") -> Path:
     """
@@ -495,42 +486,4 @@ def generate_synthetic_dataset(dataset_type: str = "sine", num_samples: int = 10
     if save_path:
         save_dataset(result, save_path, format="npz")
     
-    return result 
-
-
-def stl_filter(data, freq):
-    """Perform simple STL filtering on the data"""
-    data_len = len(data)
-    stl = STL(data, period=FREQ_MAPPING.get(freq))
-    res = stl.fit()
-    trend = res.trend
-    seasonal = res.seasonal
-    resid = res.resid
-    # remove outliers in resid using three sigma rule
-    upper = np.mean(resid) + 3 * np.std(resid)
-    lower = np.mean(resid) - 3 * np.std(resid)
-    resid[(resid > upper) | (resid < lower)] = None
-    # reverse
-    result = trend + seasonal + resid
-    
-    assert data_len == len(result)
-
-    return result
-
-def naive_seasonal_decompose(data, freq):
-    """perform naive seasonal decomposition"""
-    data_len = len(data)
-    res = seasonal_decompose(data, period=FREQ_MAPPING.get(freq), extrapolate_trend=True)
-    trend = res.trend
-    seasonal = res.seasonal
-    resid = res.resid
-    # remove outliers in resid using three sigma rule
-    upper = np.mean(resid) + 3 * np.std(resid)
-    lower = np.mean(resid) - 3 * np.std(resid)
-    resid[(resid > upper) | (resid < lower)] = None
-    # reverse
-    result = trend + seasonal + resid
-    
-    assert data_len == len(result)
-
     return result

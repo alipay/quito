@@ -51,7 +51,7 @@ class BaseConfig:
         
         Args:
             path: Path to save the configuration
-            format: Format to save in ("json", "yaml", "yaml")
+            format: Format to save in ("json", "yaml", "yml")
         """
         if format.lower() == "json":
             with open(path, "w") as f:

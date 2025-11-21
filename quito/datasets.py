@@ -13,7 +13,6 @@ from einops import rearrange
 from quito.config.data import DataConfig, Freq, Features, DatasetConfig
 from quito.config.training import TaskType, ModeType
 from quito.utils.common import register_to_mapping
-from quito.utils.data import stl_filter, naive_seasonal_decompose
 
 # newly added dataest should registered to this mapping using @register_dataset decorator, or it cannot be used
 DATASET_MAPPING = {}
@@ -136,7 +135,8 @@ class TimeSeriesDataset(Dataset):
         features = []
         
         if self.ds_config.freq == Freq.M:
-            features.append(ts_series.dt.minute / 1440.0)
+            # Minute of hour (normalized to [0, 1])
+            features.append(ts_series.dt.minute / 59.0)
         
         # Hour of day (normalized to [0, 1])
         features.append(ts_series.dt.hour / 23.0)
@@ -274,21 +274,6 @@ class TimeSeriesDataset(Dataset):
             n_cols = len(numeric_cols)
             unique_ids = None
         
-        # apply preprocessing to each time series
-        # logging.info('Performing anomaly detection and imputation ...')
-        # for c in numeric_cols:
-        #     if unique_ids is not None:
-        #         for i in unique_ids:
-        #             sub_df = df_sorted.loc[df['item_id'] == i, c]
-        #             cleaned_array = self.remove_anomaly(sub_df.values)
-        #             df_sorted.loc[df['item_id'] == i, c] = cleaned_array
-        #     else:
-        #         sub_df = df_sorted.loc[:, c]
-        #         cleaned_array = self.remove_anomaly(sub_df.values)
-        #         df_sorted.loc[:, c] = cleaned_array
-        
-        # na impurtation
-        # df_sorted[numeric_cols] = self.impute_na(df_sorted[numeric_cols])
         data = df_sorted[numeric_cols].values
         data = data.reshape(n_ids, n_rows_per_id, n_cols) # (N_ids, n_rows, n_cols)
         ts_series = df_sorted[self.date_col] # (n_rows, 1)
@@ -328,28 +313,6 @@ class TimeSeriesDataset(Dataset):
         logging.info(f'Dataset {self.name} loaded successfully')
         logging.info(f'The splits are [{border_s}, {border_e}] for {self.mode}')
     
-    def remove_anomaly(self, data: np.array) -> np.array:
-        """Remove anomaly from the data."""
-        # The input data is a pd.Series
-        anomaly_preprocess_method = self.ds_config.anomaly_remove_method
-        if anomaly_preprocess_method == 'stl':
-            data = stl_filter(data, self.ds_config.freq)
-        elif anomaly_preprocess_method == 'naive_seasonal_decompose':
-            data = naive_seasonal_decompose(data, self.ds_config.freq)
-        
-        return data
-    
-    def impute_na(self, data: pd.DataFrame):
-        """Impute NA values in the data."""
-        impute_method = self.ds_config.na_impute_method
-        if impute_method == 'linear':
-            data = data.interpolate(method='linear', axis=1)
-        
-        if data.isna().any().sum():
-            logging.warning(f'NA values found in data !!!')
-
-        return data
-
     @property
     def description(self):
         return self.ds_config
