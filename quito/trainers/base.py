@@ -233,7 +233,7 @@ class BaseTrainer(ABC):
         if ds:
             # Use DistributedSampler only if distributed training is initialized
             if dist.is_initialized() and self.world_size > 1:
-            sampler = DistributedSampler(ds, shuffle=self.config.shuffle)
+                sampler = DistributedSampler(ds, shuffle=self.config.shuffle)
                 shuffle = False
             else:
                 sampler = None
@@ -258,7 +258,7 @@ class BaseTrainer(ABC):
         if ds:
             # Use DistributedSampler only if distributed training is initialized
             if dist.is_initialized() and self.world_size > 1:
-            sampler = DistributedSampler(ds, shuffle=False)
+                sampler = DistributedSampler(ds, shuffle=False)
             else:
                 sampler = None
             
@@ -289,7 +289,7 @@ class BaseTrainer(ABC):
             
             logging.info('Checkpoint loaded from {}'.format(checkpoint_path))
         else:
-        logging.info('Perform training from scratch ...')
+            logging.info('Perform training from scratch ...')
         
     def _load_checkpoint(self, checkpoint):
         self.actual_model.load(checkpoint)
@@ -365,7 +365,7 @@ class BaseTrainer(ABC):
             if (hasattr(self.train_dataloader, 'sampler') and 
                 self.train_dataloader.sampler is not None and
                 hasattr(self.train_dataloader.sampler, 'set_epoch')):
-            self.train_dataloader.sampler.set_epoch(epoch)
+                self.train_dataloader.sampler.set_epoch(epoch)
             # Training phase
             train_loss, progress_bar = self._train_epoch()  
             # evaluate and perform checkpointing
@@ -375,8 +375,8 @@ class BaseTrainer(ABC):
             should_stop = 1 if self._should_early_stop() else 0
             if dist.is_initialized() and self.world_size > 1:
                 should_stop = torch.tensor(int(should_stop), device=self.device)
-            dist.broadcast(should_stop, src=0) # broadcast from rank 0 to other device
-            should_stop = should_stop.item()
+                dist.broadcast(should_stop, src=0) # broadcast from rank 0 to other device
+                should_stop = should_stop.item()
             else:
                 should_stop = int(should_stop)
             if should_stop:
@@ -656,7 +656,7 @@ class BaseTrainer(ABC):
             is_best_model = 1.0 if self._is_best_model(valid_loss) else 0.0
             if dist.is_initialized() and self.world_size > 1:
                 es_info = torch.tensor([is_best_model, valid_loss], device=self.device)
-            dist.broadcast(es_info, src=0) # broadcast from rank 0 to other device
+                dist.broadcast(es_info, src=0) # broadcast from rank 0 to other device
             else:
                 es_info = torch.tensor([is_best_model, valid_loss], device=self.device)
             # fetch best model and valid loss from rank 0
@@ -689,11 +689,11 @@ class BaseTrainer(ABC):
         """
         if not torch.is_tensor(metric):
             metric = torch.tensor(metric, device=self.device)
-            
+        
         # Only sync if distributed is initialized and world size > 1
         if dist.is_initialized() and self.world_size > 1:
-        dist.all_reduce(metric, op=dist.ReduceOp.SUM)
-        metric = metric / self.world_size
+            dist.all_reduce(metric, op=dist.ReduceOp.SUM)
+            metric = metric / self.world_size
         
         metric = metric.item()
         
@@ -726,6 +726,5 @@ class BaseTrainer(ABC):
     @property
     def train_sampler(self):
         if hasattr(self.train_dataloader, 'sampler') and self.train_dataloader.sampler is not None:
-        return self.train_dataloader.sampler
+            return self.train_dataloader.sampler
         return None
-    

@@ -31,7 +31,7 @@ class DistributedGroupManager:
             os.environ.get("MASTER_ADDR") is not None):
             self.use_distributed = True
             if torch.cuda.is_available():
-        torch.cuda.set_device(self.local_rank)
+                torch.cuda.set_device(self.local_rank)
             dist.init_process_group(
                 backend=self.backend, 
                 rank=self.rank, 
@@ -50,7 +50,7 @@ class DistributedGroupManager:
     def __exit__(self, exc_type, exc_value, traceback):
         """Clean up the process group when exiting the context."""
         if self.use_distributed and dist.is_initialized():
-        dist.destroy_process_group()
+            dist.destroy_process_group()
 
 
 def log_rank_zero(message):
@@ -169,7 +169,7 @@ def rank_zero_only(fn: Callable) -> Callable:
     @wraps(fn)
     def wrapped_fn(*args, **kwargs):
         if dist.is_initialized():
-        if dist.get_rank() == 0:
+            if dist.get_rank() == 0:
                 return fn(*args, **kwargs)
         else:
             # If not initialized, assume rank 0 (single process)

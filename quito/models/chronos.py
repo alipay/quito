@@ -60,8 +60,8 @@ class ChronosModel(TimeSeriesModel):
             Output tensor (loss or logits)
         """
         if y is None:
-             # If no target provided, assume inference/generation
-             return self.predict(x, **kwargs)
+            # If no target provided, assume inference/generation
+            return self.predict(x, **kwargs)
              
         # Prepare data for training (fine-tuning)
         if x.dim() == 3:
@@ -110,8 +110,7 @@ class ChronosModel(TimeSeriesModel):
                 top_p=self.config.top_p,
             )
             # forecast is likely a generator or custom object in some versions, 
-            # but in others a tensor. The previous code used .median(dim=1).values
-            # which suggests it's a specialized object (like GluonTS Forecast).
+            # but in others a tensor.
             
             if hasattr(forecast, 'median'):
                 pred = forecast.median(dim=1).values
