@@ -312,7 +312,7 @@ class TimeSeriesDataset(Dataset):
 
         logging.info(f'Dataset {self.name} loaded successfully')
         logging.info(f'The splits are [{border_s}, {border_e}] for {self.mode}')
-    
+
     @property
     def description(self):
         return self.ds_config

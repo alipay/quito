@@ -85,7 +85,7 @@ quito-10b/
 
 ## Supported Models
 
-- **Chronos** - Amazon's time series foundation model (requires: `chronos`) ⚠️ **Inference only**
+- **Chronos** - Amazon's time series foundation model (requires: `chronos`) ✅ **Trainable & Inference**
 - **Moirai** - Salesforce's time series foundation model (requires: `uni2ts`) ⚠️ **Inference only**
 - **HuggingFace** - Any HF time series model (requires: `transformers` - included)
 - **PatchTST** - Patch-based transformer (no extra dependencies) ✅ **Trainable**
@@ -94,8 +94,8 @@ quito-10b/
 > **Note**: Foundation models like Chronos and Moirai require additional packages.  
 > See `requirements-optional.txt` for installation instructions.
 > 
-> ⚠️ **Training Support**: Chronos and Moirai are pre-trained zero-shot models for inference only.
-> For training, use PatchTST, DLinear, or HuggingFace models.
+> ⚠️ **Training Support**: Moirai is pre-trained zero-shot model for inference only.
+> For training, use Chronos (fine-tuning), PatchTST, DLinear, or HuggingFace models.
 
 ## Key Features
 

@@ -153,6 +153,50 @@ pip install statsmodels matplotlib
 
 ---
 
+#### `analyze_open_hour_train_quality.py`
+Analyze dataset quality for your own parquet files in `open_hour_train/` directory.
+
+```bash
+# Analyze all files with default settings
+python examples/analyze_open_hour_train_quality.py
+
+# Custom truncation and sampling
+python examples/analyze_open_hour_train_quality.py \
+    --max_length 5000 \
+    --max_series_per_file 50 \
+    --sampling_strategy uniform
+
+# Analyze specific files
+python examples/analyze_open_hour_train_quality.py \
+    --files hour_train_hour_p1.parquet hour_train_hour_p2.parquet
+```
+
+**Features**:
+- Handles large-scale series with truncation/sampling
+- Automatic column detection (`value`, `ind_1`, or first numeric column)
+- Supports multiple series per file (via `item_id`)
+- Cross-file comparison
+- Configurable sampling strategies
+
+**Key Options**:
+- `--max_length`: Truncate long series (default: 10000)
+- `--max_series_per_file`: Sample series per file (default: 100)
+- `--sampling_strategy`: `random`, `first`, `last`, or `uniform` (default: random)
+- `--period`: Seasonal period for hourly data (default: 24)
+- `--compute_adf`: Include ADF stationarity test
+
+**Requirements** (optional):
+```bash
+pip install statsmodels arch  # For full features
+```
+
+**Outputs**:
+- Per-file quality reports
+- Cross-file comparison table (if multiple files)
+- Quality metrics for each dataset
+
+---
+
 ## 📁 Configuration Files
 
 All model configurations are in `configs/`:

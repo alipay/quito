@@ -485,5 +485,5 @@ def generate_synthetic_dataset(dataset_type: str = "sine", num_samples: int = 10
     
     if save_path:
         save_dataset(result, save_path, format="npz")
-    
+
     return result

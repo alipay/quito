@@ -44,7 +44,7 @@ class BaseModel(nn.Module, ABC):
         self.seq_len = self.config.seq_len
         self.forecast_horizon = self.config.forecast_horizon
         self.decoder_label_len = self.config.decoder_label_len
-        
+
         # Device management: handle CPU (-1) and GPU (>=0) cases
         self.device = f'cuda:{local_rank}' if local_rank >= 0 else 'cpu'
 

@@ -43,6 +43,11 @@ python examples/eval_chronos.py
 4. Computes metrics (MSE, MAE)
 5. Outputs results
 
+**Features:**
+- Zero-shot forecasting (pretrained on massive datasets)
+- **Probabilistic forecasting** (generates samples and quantiles)
+- Fine-tuning supported (use `train.py` with Chronos config)
+
 **Configuration:** `examples/configs/chronos.yaml`
 
 ```yaml
@@ -61,6 +66,11 @@ model:
 - `amazon/chronos-t5-small` (46M params, balanced)
 - `amazon/chronos-t5-base` (200M params)
 - `amazon/chronos-t5-large` (710M params, best accuracy)
+
+**Probabilistic Forecasting:**
+Chronos can generate full distributions. The `ChronosModel` wrapper provides:
+- `predict(x)`: Returns median (point forecast)
+- `predict_prob(x, quantiles=[0.1, 0.5, 0.9])`: Returns samples, quantiles, and mean
 
 ### Moirai Evaluation
 

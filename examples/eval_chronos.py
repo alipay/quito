@@ -3,13 +3,12 @@
 Chronos Time Series Model - Zero-Shot Inference & Evaluation
 
 Self-contained script to evaluate Amazon Chronos model on your data.
-⚠️  NOTE: Chronos is a pre-trained zero-shot model for INFERENCE ONLY.
-While it technically supports fine-tuning, it's primarily designed for zero-shot forecasting.
 
 This script demonstrates:
 - Loading pre-trained Chronos model from HuggingFace
+- Generating probabilistic forecasts (quantiles)
 - Evaluating on custom time series data
-- Computing metrics (MSE, MAE, etc.)
+- Computing metrics (MSE, MAE)
 
 No dependencies on other example scripts.
 Automatically uses CPU if no GPU is available.
@@ -140,7 +139,11 @@ def main():
             
             # Get predictions
             try:
-                y_pred = model.predict(x)
+                # Use probabilistic prediction to get mean and quantiles
+                prob_forecast = model.predict_prob(x)
+                
+                # Use mean prediction for standard metrics
+                y_pred = prob_forecast['mean'] 
                 
                 # Extract target horizon
                 y_true = y[:, -model.forecast_horizon:, :]
@@ -180,4 +183,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
