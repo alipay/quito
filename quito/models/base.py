@@ -44,6 +44,9 @@ class BaseModel(nn.Module, ABC):
         self.seq_len = self.config.seq_len
         self.forecast_horizon = self.config.forecast_horizon
         self.decoder_label_len = self.config.decoder_label_len
+        
+        # Device management: handle CPU (-1) and GPU (>=0) cases
+        self.device = f'cuda:{local_rank}' if local_rank >= 0 else 'cpu'
 
     def setup_loss_fn(self, loss_fn, loss_kwargs):
         """
@@ -156,7 +159,7 @@ class BaseModel(nn.Module, ABC):
         
         # Move batch to device
         batch = {
-                k: v.to(self.local_rank) if isinstance(v, torch.Tensor) else v
+                k: v.to(self.device) if isinstance(v, torch.Tensor) else v
                 for k, v in batch.items()
             }
         # Forward pass and loss computation
@@ -179,7 +182,7 @@ class BaseModel(nn.Module, ABC):
         with torch.no_grad():
             # Move batch to device
             batch = {
-                k: v.to(self.local_rank) if isinstance(v, torch.Tensor) else v
+                k: v.to(self.device) if isinstance(v, torch.Tensor) else v
                 for k, v in batch.items()
             }
             score_dict, y_pred = self._eval_step(**batch)
@@ -276,7 +279,7 @@ class TimeSeriesModel(BaseModel):
     def _construct_model_input(self, x, y, x_mark, y_mark):
         """ Construct decoder input using y for encoder-decoder framework """            
         dec_in = torch.zeros_like(y[:, -self.forecast_horizon:, :])
-        dec_in = torch.cat([y[:, :self.decoder_label_len, :], dec_in], dim=1).float().to(self.local_rank)
+        dec_in = torch.cat([y[:, :self.decoder_label_len, :], dec_in], dim=1).float().to(self.device)
 
         return x, dec_in, x_mark, y_mark
         

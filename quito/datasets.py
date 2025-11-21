@@ -100,7 +100,15 @@ class TimeSeriesDataset(Dataset):
             ds_config: Dataset configuration object
             mode: Mode type (train, valid, test)
         """
-        self.data_dir = Path(data_dir)
+        # Convert to absolute path relative to project root
+        data_dir_path = Path(data_dir)
+        if data_dir_path.is_absolute():
+            self.data_dir = data_dir_path
+        else:
+            # Resolve relative to project root (where quito package is)
+            import quito
+            project_root = Path(quito.__file__).parent.parent
+            self.data_dir = (project_root / data_dir).resolve()
         self.seq_len = seq_len
         self.decoder_label_len = decoder_label_len
         self.forecast_horizon = forecast_horizon
@@ -230,8 +238,9 @@ class TimeSeriesDataset(Dataset):
         return data
     
     def _init_data(self):
-        # Process dataframe
-        df = pd.read_parquet(self.data_dir / self.ds_config.file_name)
+        # Process dataframe - use absolute path
+        file_path = (self.data_dir / self.ds_config.file_name).resolve()
+        df = pd.read_parquet(str(file_path))
         # Identify columns
         for col in ['date_time', 'date', 'datetime', 'timestamp']:
             if col in df.columns:

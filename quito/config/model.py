@@ -15,6 +15,9 @@ class ModelType(Enum):
     """Enumeration of supported model types."""
     PATCHTST = 'patchtst'
     DLINEAR = 'dlinear'
+    CHRONOS = 'chronos'
+    MORIAI = 'moriai'
+    HUGGINGFACE = 'huggingface'
 
 @dataclass
 class ModelConfig(BaseConfig):
@@ -126,3 +129,39 @@ class DLinearModelConfig(ModelConfig):
     kernel_size: int = 25
     individual: bool = False
     enc_in: int = 7
+
+
+@dataclass
+class ChronosModelConfig(ModelConfig):
+    """
+    Configuration for Chronos model.
+    """
+    pretrained_model_name_or_path: str = "amazon/chronos-t5-small"
+    prediction_length: int = 192
+    num_samples: int = 20
+    temperature: float = 1.0
+    top_k: int = 50
+    top_p: float = 1.0
+
+
+@dataclass
+class MoriaiModelConfig(ModelConfig):
+    """
+    Configuration for Moirai model.
+    """
+    pretrained_model_name_or_path: str = "Salesforce/moirai-1.0-R-small"
+    prediction_length: int = 96
+    patch_size: int = 64
+    context_length: int = 1000
+    num_samples: int = 100
+    target_dim: int = 1  # Number of target variables
+    feat_dynamic_real_dim: int = 0  # Number of dynamic real features
+    past_feat_dynamic_real_dim: int = 0  # Number of past dynamic real features
+
+@dataclass
+class HuggingFaceModelConfig(ModelConfig):
+    """
+    Configuration for generic Hugging Face model.
+    """
+    pretrained_model_name_or_path: str = "google/timesfm-1.0-200m"
+    trust_remote_code: bool = True

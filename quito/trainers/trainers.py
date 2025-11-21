@@ -13,10 +13,10 @@ class Trainer(BaseTrainer):
     
     def _training_step(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Perform a single training step."""
-        return self.model.module.train_step(batch)
+        return self.actual_model.train_step(batch)
     
     def _evaluation_step(self, batch: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
         """Perform a single evaluation step."""
         
-        return self.model.module.eval_step(batch)
+        return self.actual_model.eval_step(batch)
     

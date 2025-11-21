@@ -14,6 +14,9 @@ from omegaconf import OmegaConf
 
 from quito.models.patchtst import PatchTST
 from quito.models.dlinear import DLinear
+from quito.models.chronos import ChronosModel
+from quito.models.moriai import MoriaiModel
+from quito.models.huggingface import HuggingFaceModel
 from quito.config.model import ModelType, ModelConfig
 from quito.config.base import BaseConfig
 from quito.models.base import BaseModel
@@ -23,8 +26,10 @@ from quito.config.auto import AutoConfig
 # Model registry mapping model types to classes
 MODEL_MAPPING = {
     ModelType.PATCHTST: PatchTST,
-    ModelType.DLINEAR: DLinear
-
+    ModelType.DLINEAR: DLinear,
+    ModelType.CHRONOS: ChronosModel,
+    ModelType.MORIAI: MoriaiModel,
+    ModelType.HUGGINGFACE: HuggingFaceModel,
 }
 
 class AutoModel:

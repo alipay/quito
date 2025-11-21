@@ -58,6 +58,10 @@ class BaseTrainer(ABC):
         self.global_rank = global_rank
         self.world_size = world_size
         self.config = config or TrainingConfig()
+        
+        # Device management: handle CPU (-1) and GPU (>=0) cases
+        self.device = f'cuda:{local_rank}' if local_rank >= 0 else 'cpu'
+        
         # Initialize components
         self._setup_model()
         self.optimizer = self.get_optimizer()
@@ -94,6 +98,11 @@ class BaseTrainer(ABC):
 
         # validate
         self.validate()
+    
+    @property
+    def actual_model(self):
+        """Get the actual model, unwrapping DDP if needed."""
+        return self.model.module if hasattr(self.model, 'module') else self.model
     
     def get_optimizer(self) -> torch.optim.Optimizer:
         """
@@ -167,8 +176,14 @@ class BaseTrainer(ABC):
         """
         validate inputs
         """
-        assert (self.local_rank >= 0) and (self.global_rank >= 0) and (self.world_size > 0),\
-         "CPU is not supported"
+        # Allow CPU mode (rank=-1, world_size=-1) or GPU mode (rank>=0, world_size>0)
+        if not ((self.local_rank == -1 and self.global_rank == -1 and self.world_size == -1) or
+                (self.local_rank >= 0 and self.global_rank >= 0 and self.world_size > 0)):
+            raise ValueError(
+                f"Invalid rank/world_size configuration: "
+                f"local_rank={self.local_rank}, global_rank={self.global_rank}, world_size={self.world_size}. "
+                f"Must be all -1 (CPU mode) or all valid (GPU mode)."
+            )
         assert self.config.es_metric in self.config.eval_metrics,\
          f"{self.config.es_metric} must presented in {self.config.eval_metrics} !!!"
 
@@ -200,8 +215,8 @@ class BaseTrainer(ABC):
         self.logging_strategies = logging_strategies
 
     def _setup_model(self):
-        self.model.module.metrics = self.config.eval_metrics
-        self.model.module.setup_loss_fn(self.config.loss, self.config.loss_kwargs)
+        self.actual_model.metrics = self.config.eval_metrics
+        self.actual_model.setup_loss_fn(self.config.loss, self.config.loss_kwargs)
 
     def _setup_tensorboard(self):
         if self.global_rank == 0:
@@ -216,12 +231,18 @@ class BaseTrainer(ABC):
         Get dataloader for training, automatic attach distributed sampler to trainer
         """
         if ds:
-            sampler = DistributedSampler(ds, shuffle=self.config.shuffle)
+            # Use DistributedSampler only if distributed training is initialized
+            if dist.is_initialized() and self.world_size > 1:
+                sampler = DistributedSampler(ds, shuffle=self.config.shuffle)
+                shuffle = False
+            else:
+                sampler = None
+                shuffle = self.config.shuffle
 
             return DataLoader(
                 ds,
                 batch_size=self.config.batch_size,
-                shuffle=False,
+                shuffle=shuffle,
                 num_workers=self.config.num_workers,
                 pin_memory=self.config.pin_memory,
                 sampler=sampler,
@@ -235,7 +256,11 @@ class BaseTrainer(ABC):
         get dataloader for evaluation
         """
         if ds:
-            sampler = DistributedSampler(ds, shuffle=False)
+            # Use DistributedSampler only if distributed training is initialized
+            if dist.is_initialized() and self.world_size > 1:
+                sampler = DistributedSampler(ds, shuffle=False)
+            else:
+                sampler = None
             
             return DataLoader(
                 ds,
@@ -267,7 +292,7 @@ class BaseTrainer(ABC):
         logging.info('Perform training from scratch ...')
         
     def _load_checkpoint(self, checkpoint):
-        self.model.module.load(checkpoint)
+        self.actual_model.load(checkpoint)
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if self.scheduler:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -304,7 +329,7 @@ class BaseTrainer(ABC):
             
     def _save_checkpoint(self, ckpt_save_dir, valid_loss, prefix):
         checkpoint = {
-            'model_state_dict': self.model.module.state_dict(),
+            'model_state_dict': self.actual_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
             'scaler_state_dict': self.scaler.state_dict() if self.scaler else None,
@@ -336,8 +361,11 @@ class BaseTrainer(ABC):
             self.epoch = epoch
             if not self.train_dataloader:
                 raise ValueError('Train Dataloader not provided in TRAINING MODE !')
-            # set sampler epoch
-            self.train_dataloader.sampler.set_epoch(epoch)
+            # set sampler epoch (only if using DistributedSampler)
+            if (hasattr(self.train_dataloader, 'sampler') and 
+                self.train_dataloader.sampler is not None and
+                hasattr(self.train_dataloader.sampler, 'set_epoch')):
+                self.train_dataloader.sampler.set_epoch(epoch)
             # Training phase
             train_loss, progress_bar = self._train_epoch()  
             # evaluate and perform checkpointing
@@ -345,9 +373,12 @@ class BaseTrainer(ABC):
             # Early stopping
             # here, broadcast again, make use all processes terminate at the same time
             should_stop = 1 if self._should_early_stop() else 0
-            should_stop = torch.tensor(int(should_stop), device=self.local_rank)
-            dist.broadcast(should_stop, src=0) # broadcast from rank 0 to other device
-            should_stop = should_stop.item()
+            if dist.is_initialized() and self.world_size > 1:
+                should_stop = torch.tensor(int(should_stop), device=self.device)
+                dist.broadcast(should_stop, src=0) # broadcast from rank 0 to other device
+                should_stop = should_stop.item()
+            else:
+                should_stop = int(should_stop)
             if should_stop:
                 logging.info(f"Early stopping triggered after {epoch + 1} epochs")
                 break
@@ -623,8 +654,11 @@ class BaseTrainer(ABC):
             valid_loss = total_loss_dict[self.config.es_metric]
             # Check if this is the best model, this will be evaluate at rank_0 only and broadcast to all other devices
             is_best_model = 1.0 if self._is_best_model(valid_loss) else 0.0
-            es_info = torch.tensor([is_best_model, valid_loss], device=self.local_rank)
-            dist.broadcast(es_info, src=0) # broadcast from rank 0 to other device
+            if dist.is_initialized() and self.world_size > 1:
+                es_info = torch.tensor([is_best_model, valid_loss], device=self.device)
+                dist.broadcast(es_info, src=0) # broadcast from rank 0 to other device
+            else:
+                es_info = torch.tensor([is_best_model, valid_loss], device=self.device)
             # fetch best model and valid loss from rank 0
             is_best_model = int(es_info[0].item())
             valid_loss = es_info[1].item()
@@ -655,9 +689,12 @@ class BaseTrainer(ABC):
         """
         if not torch.is_tensor(metric):
             metric = torch.tensor(metric, device=self.model.device)
-            
-        dist.all_reduce(metric, op=dist.ReduceOp.SUM)
-        metric = metric / self.world_size
+        
+        # Only sync if distributed is initialized and world size > 1
+        if dist.is_initialized() and self.world_size > 1:
+            dist.all_reduce(metric, op=dist.ReduceOp.SUM)
+            metric = metric / self.world_size
+        
         metric = metric.item()
         
         return metric
@@ -688,5 +725,7 @@ class BaseTrainer(ABC):
     
     @property
     def train_sampler(self):
-        return self.train_dataloader.sampler
+        if hasattr(self.train_dataloader, 'sampler') and self.train_dataloader.sampler is not None:
+            return self.train_dataloader.sampler
+        return None
     

@@ -1,7 +1,7 @@
 import logging
 from omegaconf import DictConfig
 
-from quito.config.model import ModelType, PatchTSTModelConfig, DLinearModelConfig
+from quito.config.model import ModelType, PatchTSTModelConfig, DLinearModelConfig, ChronosModelConfig, MoriaiModelConfig, HuggingFaceModelConfig
 from quito.config.training import TrainingConfig, TrainerType
 from quito.config.data import DataConfig
 
@@ -9,7 +9,10 @@ from quito.config.data import DataConfig
 
 MODEL_CONFIG_MAPPING = {
     ModelType.PATCHTST: PatchTSTModelConfig,
-    ModelType.DLINEAR: DLinearModelConfig
+    ModelType.DLINEAR: DLinearModelConfig,
+    ModelType.CHRONOS: ChronosModelConfig,
+    ModelType.MORIAI: MoriaiModelConfig,
+    ModelType.HUGGINGFACE: HuggingFaceModelConfig
 }
 
 TRAINER_CONFIG_MAPPING = {
