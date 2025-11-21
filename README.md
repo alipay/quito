@@ -1,164 +1,186 @@
-# QUITO-10B: A High Quality CloudOps Time Series Dataset with 10 Billion Tokens
+# QUITO - Time Series Foundation Model Training
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](docs/)
+A lightweight framework for training and evaluating time series foundation models.
 
-**QUITO** (**Q**uality Cl**U**d**O**ps **T**ime Series) is a comprehensive library for large-scale time series model training and evaluation on CloudOps data with 10 billion tokens. Designed with the same philosophy as Hugging Face Transformers, QUITO provides a unified interface for training, fine-tuning, and evaluating state-of-the-art time series models across various operational domains.
+## Quick Start
 
-## 🚀 Features
+### 1. Setup Environment
+```bash
+# Install core dependencies
+pip install -r requirements.txt
 
-- **10 Billion Token Dataset**: High-quality CloudOps time series data at scale
-- **Unified Model Interface**: Consistent API for all time series models
-- **Large-Scale Training**: GPU support with mixed precision (FP16) training
-- **Configuration-Driven**: OmegaConf-based YAML configuration system
-- **Comprehensive Evaluation**: Built-in metrics and benchmarks inspired by TSGBench
-- **CloudOps Focused**: Optimized for operational metrics, monitoring, and forecasting
-- **Production Ready**: Battle-tested on real-world CloudOps data
+# Optional: Install specific model dependencies (only if you need them)
+# For Chronos:
+pip install git+https://github.com/amazon-science/chronos-forecasting.git
 
-## 📦 Installation
+# For Moirai:
+pip install uni2ts
+
+# See requirements-optional.txt for all optional dependencies
+```
+
+### 2. Create Sample Data
+```bash
+python examples/create_data.py
+```
+
+### 3. Train a Model
+
+**Option A: Use Example Scripts (Recommended)**
+```bash
+# Training examples (self-contained, no arguments needed)
+python examples/train_patchtst.py
+python examples/train_huggingface.py
+
+# Inference-only (zero-shot evaluation)
+python examples/eval_chronos.py  # Chronos - zero-shot inference
+python examples/eval_moriai.py   # Moirai - zero-shot inference
+```
+
+**Option B: Use General Script**
+```bash
+# Requires config path argument
+python scripts/train.py --config_path examples/configs/chronos.yaml
+```
+
+## Project Structure
+
+```
+quito-10b/
+├── examples/                       # Self-contained example scripts
+│   ├── train_patchtst.py          # Train PatchTST (trainable)
+│   ├── train_huggingface.py       # Train HF models (trainable)
+│   ├── eval_chronos.py            # Evaluate Chronos (zero-shot)
+│   ├── eval_moriai.py             # Evaluate Moirai (zero-shot)
+│   ├── create_data.py             # Generate test data
+│   ├── configs/                   # Model configurations
+│   │   ├── patchtst.yaml
+│   │   ├── huggingface.yaml
+│   │   ├── chronos.yaml
+│   │   └── moriai.yaml
+│   └── datasets/                  # Data storage
+│       └── parquet_data/          # Parquet format data
+├── scripts/                       # General training scripts
+│   ├── train.py                   # Main training script (any config)
+│   ├── evaluate.py                # Evaluation script
+│   └── pretrain.py                # Legacy script
+├── quito/                         # Core library
+│   ├── models/                    # Model implementations
+│   ├── config/                    # Configuration classes
+│   ├── trainers/                  # Training logic
+│   └── datasets.py                # Data loading
+├── docs/                          # Documentation
+│   ├── TRAINING.md                # Training guide
+│   ├── EVALUATION.md              # Evaluation guide
+│   └── EXAMPLES.md                # Examples explained
+├── configs/                       # Default configurations
+│   └── config.yaml
+└── requirements-optional.txt      # Optional model dependencies
+```
+
+## Supported Models
+
+- **Chronos** - Amazon's time series foundation model (requires: `chronos`) ⚠️ **Inference only**
+- **Moirai** - Salesforce's time series foundation model (requires: `uni2ts`) ⚠️ **Inference only**
+- **HuggingFace** - Any HF time series model (requires: `transformers` - included)
+- **PatchTST** - Patch-based transformer (no extra dependencies) ✅ **Trainable**
+- **DLinear** - Decomposition linear model (no extra dependencies) ✅ **Trainable**
+
+> **Note**: Foundation models like Chronos and Moirai require additional packages.  
+> See `requirements-optional.txt` for installation instructions.
+> 
+> ⚠️ **Training Support**: Chronos and Moirai are pre-trained zero-shot models for inference only.
+> For training, use PatchTST, DLinear, or HuggingFace models.
+
+## Key Features
+
+✅ **Simple**: Each example is self-contained (~100 lines)  
+✅ **Independent**: No cross-dependencies between examples  
+✅ **GPU Ready**: Automatic GPU/CPU detection  
+✅ **Lightweight**: Minimal dependencies  
+✅ **Flexible**: Easy to customize configs  
+✅ **Production**: Supports multi-GPU training  
+
+## GPU Training
 
 ```bash
-pip install quito
+# Single GPU
+CUDA_VISIBLE_DEVICES=0 python examples/train_chronos.py
+
+# Multi-GPU with DDP
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 examples/train_chronos.py
 ```
 
-For development installation:
-```bash
-git clone https://github.com/iLampard/QUITO.git
-cd QUITO
-pip install -e .
+## Configuration
+
+Edit YAML files in `examples/configs/` or `configs/`:
+
+```yaml
+data:
+  common:
+    seq_len: 512              # Input length
+    forecast_horizon: 96      # Prediction length
+    features: "S"             # S: univariate, M: multivariate
+
+model:
+  model_name: "chronos"
+  pretrained_model_name_or_path: "amazon/chronos-t5-small"
+
+training:
+  num_epochs: 5
+  batch_size: 8
+  learning_rate: 0.0001
 ```
 
-## 🎯 Quick Start
+## Dependencies
 
-### Training with Configuration Files
+**Core Dependencies** (in `requirements.txt`):
+- PyTorch, NumPy, Pandas, Transformers (required for all models)
 
-```bash
-# Extract sample data
-python scripts/extract_sample_data.py \
-    --input-dir data/open_hour_train \
-    --output-dir data/sample_train \
-    --sample-size 10000
+**Optional Model Dependencies** (in `requirements-optional.txt`):
+- **Chronos**: `pip install git+https://github.com/amazon-science/chronos-forecasting.git`
+- **Moirai**: `pip install uni2ts`
 
-# Train with config file
-python scripts/train.py --config configs/train_config.yaml
+> 💡 **Tip**: Only install the optional dependencies for models you plan to use!
 
-# Train with GPU and mixed precision
-python scripts/train.py --config configs/pyraformer_gpu.yaml --fp16
-```
+## Documentation
 
-### Python API Usage
+### 📚 Comprehensive Guides in `docs/`
 
-```python
-from quito import ModelConfig, TrainingConfig, load_dataset, ForecastingTrainer
-from quito.models import AutoModelForTimeSeriesForecasting
-from quito.config import ModelType
+- **[docs/TRAINING.md](docs/TRAINING.md)** - Complete training guide
+  - Trainable models overview
+  - Training scripts usage (single/multi-GPU/CPU)
+  - Configuration options
+  - Troubleshooting
 
-# Load dataset
-train_dataset = load_dataset(
-    data_path="data/sample_train",
-    seq_len=96,
-    pred_len=96,
-    features="MS",
-    scale=True
-)
+- **[docs/EVALUATION.md](docs/EVALUATION.md)** - Evaluation guide
+  - Zero-shot inference (Chronos, Moirai)
+  - Evaluation metrics
+  - Model comparison
+  - Custom evaluation
 
-# Create model
-model_config = ModelConfig(
-    model_type=ModelType.PYRAFORMER,
-    seq_len=96,
-    pred_len=96,
-    enc_in=5,
-    d_model=512,
-    n_heads=8
-)
-model = AutoModelForTimeSeriesForecasting.from_config(model_config)
+- **[docs/EXAMPLES.md](docs/EXAMPLES.md)** - Example scripts explained
+  - Training examples (`train_*.py`)
+  - Evaluation examples (`eval_*.py`)
+  - Configuration files
+  - Common patterns
 
-# Train
-training_config = TrainingConfig(num_epochs=10, per_device_train_batch_size=32)
-trainer = ForecastingTrainer(model, train_dataset, config=training_config)
-trainer.train()
-```
+### 🎯 Quick Navigation
 
-## 📚 Documentation
+| I want to... | Go to... |
+|--------------|----------|
+| Train a model on my data | [docs/TRAINING.md](docs/TRAINING.md) |
+| Use pre-trained models (zero-shot) | [docs/EVALUATION.md](docs/EVALUATION.md) |
+| Understand example scripts | [docs/EXAMPLES.md](docs/EXAMPLES.md) |
+| Use multiple GPUs | [docs/TRAINING.md](docs/TRAINING.md) → Multi-GPU Training |
+| Troubleshoot errors | [docs/TRAINING.md](docs/TRAINING.md) → Troubleshooting |
 
-- **[Training Guide](docs/TRAINING_GUIDE.md)** - Complete guide to training models
-- **[Configuration Guide](docs/CONFIGS_GUIDE.md)** - YAML configuration documentation  
-- **[Quick Start](docs/CONFIG_QUICK_START.md)** - 5-minute configuration tutorial
-- **[Scripts Guide](docs/SCRIPTS_GUIDE.md)** - Training scripts documentation
+## Design Philosophy
 
-## 🏗️ Project Structure
+**Examples folder**: Self-contained scripts for specific models. Each script is independent and can run without any other example files.
 
-```
-QUITO/
-├── quito/                  # Main package
-│   ├── models/            # Model implementations (Pyraformer, Informer, etc.)
-│   ├── trainers/          # Training loops with GPU support
-│   ├── config/            # Configuration classes
-│   ├── datasets.py        # Data loading and preprocessing
-│   └── utils/             # Utility functions
-├── configs/               # YAML training configurations
-│   ├── train_config.yaml
-│   ├── pyraformer_gpu.yaml
-│   └── ...
-├── scripts/               # Training and utility scripts
-│   ├── train.py          # Main training script
-│   ├── extract_sample_data.py
-│   └── ...
-├── docs/                  # Documentation
-│   ├── TRAINING_GUIDE.md
-│   ├── CONFIGS_GUIDE.md
-│   └── ...
-└── examples/              # Example scripts
-```
+**Scripts folder**: General-purpose scripts that work with any configuration file.
 
-## 🎯 Supported Models
+**Quito library**: Core functionality shared by all scripts.
 
-### Currently Implemented
-- **Transformer-based**: Pyraformer, Informer, Autoformer, PatchTST
-
-### Coming Soon
-- **GAN-based**: TimeGAN, DoppelGANger, RGAN
-- **VAE-based**: VQVAE, KVAE
-- **Flow-based**: CTFP, Fourier Flow
-- **ODE-based**: Neural ODE, ODE-RNN, Neural SDE
-
-## 📊 Evaluation Metrics
-
-QUITO includes comprehensive evaluation metrics inspired by TSGBench:
-
-- **Model-based**: Discriminative Score, Predictive Score, Contextual-FID
-- **Feature-based**: Marginal Distribution Difference, AutoCorrelation Difference
-- **Distance-based**: Euclidean Distance, Dynamic Time Warping
-- **Visualization**: t-SNE, Distribution Plots
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🌟 About QUITO-10B
-
-**QUITO-10B** represents a high-quality CloudOps time series dataset with 10 billion tokens, providing a comprehensive resource for training and evaluating time series models on operational data at scale. The library is designed to handle large-scale CloudOps metrics, logs, and monitoring data for forecasting, anomaly detection, and operational intelligence.
-
-### Dataset Scale
-- **10 Billion Tokens**: Massive scale for robust model training
-- **CloudOps Domain**: Real-world operational metrics and monitoring data
-- **High Quality**: Carefully curated and preprocessed time series data
-- **Production Scale**: Enterprise-grade data volume and complexity
-
-## 🙏 Acknowledgments
-
-- Inspired by [Hugging Face Transformers](https://github.com/huggingface/transformers)
-- Evaluation metrics based on [TSGBench](https://github.com/YihaoAng/TSGBench)
-- Model implementations inspired by [Time-Series-Library](https://github.com/thuml/Time-Series-Library)
-- Built for real-world CloudOps and operational intelligence use cases
-
-## 📞 Contact
-
-- GitHub Issues: [Report bugs or request features](https://github.com/your-username/QUITO/issues)
-- Discussions: [Join the community](https://github.com/your-username/QUITO/discussions)
+Simple, clean, and production-ready! 🚀

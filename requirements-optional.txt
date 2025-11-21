@@ -1,0 +1,37 @@
+# Optional dependencies for specific time series foundation models
+# Install only the models you need to use
+
+# ==============================================================================
+# Amazon Chronos
+# ==============================================================================
+# For using Chronos time series foundation model
+# Install with: pip install git+https://github.com/amazon-science/chronos-forecasting.git
+
+# ==============================================================================
+# Salesforce Moirai
+# ==============================================================================
+# For using Moirai time series foundation model
+# Install with: pip install uni2ts
+
+# ==============================================================================
+# Other Hugging Face Models
+# ==============================================================================
+# Most Hugging Face time series models work with the base transformers library
+# already included in requirements.txt. Some may require additional packages:
+# - google/timesfm: No additional dependencies
+# - Additional model-specific requirements will be documented as needed
+
+# ==============================================================================
+# Installation Examples
+# ==============================================================================
+# 
+# For Chronos only:
+#   pip install git+https://github.com/amazon-science/chronos-forecasting.git
+#
+# For Moirai only:
+#   pip install uni2ts
+#
+# For all optional models:
+#   pip install git+https://github.com/amazon-science/chronos-forecasting.git uni2ts
+#
+

@@ -62,8 +62,9 @@ class ChronosModel(TimeSeriesModel):
         
         # Generate forecasts
         with torch.no_grad():
+            # ChronosPipeline.predict expects the context as first positional arg
             forecast = self.pipeline.predict(
-                context=x,
+                x,  # Context as positional argument
                 prediction_length=self.config.forecast_horizon,
                 num_samples=self.config.num_samples,
                 temperature=self.config.temperature,
