@@ -3,7 +3,9 @@ import numpy as np
 import torch
 import os
 import logging
+import json
 from pathlib import Path
+from typing import Dict, Any, Union
 from omegaconf import OmegaConf, DictConfig
 import torch.distributed as dist
 from typing import Callable
@@ -54,3 +56,47 @@ def register_to_mapping(mapping):
         return cls
     
     return inner
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom encoder for NumPy types in JSON"""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+
+
+def save_json(data: Dict[str, Any], output_path: Union[str, Path], logger=None):
+    """Save dictionary to JSON file with numpy support."""
+    output_path = Path(output_path)
+    try:
+        with open(output_path, 'w') as f:
+            json.dump(data, f, cls=NumpyEncoder, indent=2)
+        if logger:
+            logger.info(f"Saved results to {output_path}")
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to save results: {e}")
+        else:
+            print(f"Failed to save results: {e}")
+
+
+def load_json(output_path: Union[str, Path], logger=None) -> Dict[str, Any]:
+    """Load JSON file if it exists."""
+    output_path = Path(output_path)
+    if output_path.exists():
+        try:
+            with open(output_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            msg = f"Could not load existing results from {output_path}: {e}"
+            if logger:
+                logger.warning(msg)
+            else:
+                print(msg)
+            return {}
+    return {}

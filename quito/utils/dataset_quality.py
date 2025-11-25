@@ -21,10 +21,18 @@ Core Metrics:
 import os
 import logging
 import numpy as np
+from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Union
 import warnings
 from scipy.signal import welch
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    warnings.warn("pandas not available. Parquet loading will fail.")
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -590,3 +598,148 @@ def evaluate_dataset_from_file(
         print_dataset_report(results)
     return results
 
+
+def load_time_series_from_parquet(
+    file_path: Union[str, Path],
+    value_col: str = 'value',
+    max_length: Optional[int] = None,
+    max_series: Optional[int] = None,
+    sampling_strategy: str = 'random',
+    use_all_indices: bool = False
+) -> List[np.ndarray]:
+    """
+    Load parquet file and extract time series with truncation/sampling.
+    
+    Args:
+        file_path: Path to parquet file
+        value_col: Name of the value column (default: 'value')
+        max_length: Maximum length per series (truncate if longer)
+        max_series: Maximum number of series to sample per file
+        sampling_strategy: 'random', 'first', 'last', or 'uniform'
+        use_all_indices: If True, use all columns starting with 'ind_' as separate series
+    
+    Returns:
+        List of time series arrays
+    """
+    if not PANDAS_AVAILABLE:
+        raise ImportError("pandas is required to load parquet files")
+
+    file_path = Path(file_path)
+    logger.info(f"Loading {file_path.name}...")
+    df = pd.read_parquet(str(file_path))
+    
+    # Identify date column
+    date_col = None
+    for col in ['date_time', 'date', 'datetime', 'timestamp']:
+        if col in df.columns:
+            date_col = col
+            break
+    
+    if date_col is None:
+        logger.warning(f"No date column found in {file_path.name}, skipping...")
+        return []
+    
+    # Sort by date
+    df[date_col] = pd.to_datetime(df[date_col])
+    df = df.sort_values(date_col)
+    
+    # Check if multiple series (has item_id)
+    if 'item_id' in df.columns:
+        series_list = []
+        unique_ids = df['item_id'].unique()
+        
+        # Sample series if needed
+        if max_series and len(unique_ids) > max_series:
+            if sampling_strategy == 'random':
+                np.random.seed(42)  # For reproducibility
+                unique_ids = np.random.choice(unique_ids, size=max_series, replace=False)
+            elif sampling_strategy == 'first':
+                unique_ids = unique_ids[:max_series]
+            elif sampling_strategy == 'last':
+                unique_ids = unique_ids[-max_series:]
+            elif sampling_strategy == 'uniform':
+                indices = np.linspace(0, len(unique_ids) - 1, max_series, dtype=int)
+                unique_ids = unique_ids[indices]
+            else:
+                raise ValueError(f"Unknown sampling strategy: {sampling_strategy}")
+            
+            logger.info(f"  Sampling {len(unique_ids)} series from {df['item_id'].nunique()} total")
+        
+        # Extract series for each item_id
+        for item_id in unique_ids:
+            item_df = df[df['item_id'] == item_id].sort_values(date_col)
+            
+            # Determine which columns to use
+            target_cols = []
+            if use_all_indices:
+                target_cols = [c for c in item_df.columns if c.startswith('ind_')]
+                if not target_cols:
+                    logger.debug(f"  No 'ind_' columns found for item_id={item_id}, falling back to single column")
+
+            if not target_cols:
+                # Get value column (try common names)
+                if value_col in item_df.columns:
+                    target_cols = [value_col]
+                elif 'ind_1' in item_df.columns:
+                    target_cols = ['ind_1']
+                    logger.debug(f"  Using 'ind_1' column for item_id={item_id}")
+                else:
+                    # Try to find numeric columns
+                    numeric_cols = item_df.select_dtypes(include=[np.number]).columns
+                    if len(numeric_cols) > 0:
+                        target_cols = [numeric_cols[0]]
+                        logger.debug(f"  Using '{numeric_cols[0]}' column for item_id={item_id}")
+                    else:
+                        logger.warning(f"  No value column found for item_id={item_id}, skipping...")
+                        continue
+
+            for col in target_cols:
+                values = item_df[col].values
+                
+                # Truncate if needed
+                if max_length and len(values) > max_length:
+                    # Take the most recent max_length points
+                    values = values[-max_length:]
+                    logger.debug(f"  Truncated series {item_id} (col={col}) from {len(item_df)} to {len(values)} points")
+                
+                if len(values) > 0:
+                    series_list.append(values)
+        
+        logger.info(f"  Loaded {len(series_list)} series from {file_path.name}")
+        return series_list
+    
+    else:
+        # Single series (or wide format with multiple columns)
+        series_list = []
+        target_cols = []
+        
+        if use_all_indices:
+            target_cols = [c for c in df.columns if c.startswith('ind_')]
+        
+        if not target_cols:
+            if value_col in df.columns:
+                target_cols = [value_col]
+            elif 'ind_1' in df.columns:
+                target_cols = ['ind_1']
+                logger.info(f"  Using 'ind_1' column")
+            else:
+                # Try to find numeric columns
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 0:
+                    target_cols = [numeric_cols[0]]
+                    logger.info(f"  Using '{numeric_cols[0]}' column")
+                else:
+                    logger.warning(f"No value column found in {file_path.name}, skipping...")
+                    return []
+        
+        for col in target_cols:
+            values = df[col].values
+            
+            # Truncate if needed
+            if max_length and len(values) > max_length:
+                values = values[-max_length:]
+                logger.debug(f"  Truncated series (col={col}) from {len(df)} to {len(values)} points")
+            
+            series_list.append(values)
+
+        return series_list
