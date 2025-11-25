@@ -52,12 +52,33 @@ def load_datasets(
             logging.info(f'Loading {name} for {task} using {ds_cls.__name__} ...')
             ds_lst.append(ds)    
     
+    if not ds_lst:
+        return None
+
     ds = ConcatDataset(ds_lst)
     
     logging.info(f"{task} {mode} dataset size: {len(ds)} samples")
     
     return ds
     
+
+def get_dataset(data_config: DataConfig, task: TaskType = TaskType.FINE_TUNE) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
+    """
+    Get train, validation, and test datasets.
+    
+    Args:
+        data_config: Data configuration
+        task: Task type (default: FINE_TUNE)
+        
+    Returns:
+        Tuple of (train_ds, val_ds, test_ds)
+    """
+    train_ds = load_datasets(data_config, task, ModeType.TRAIN)
+    val_ds = load_datasets(data_config, task, ModeType.VALID)
+    test_ds = load_datasets(data_config, task, ModeType.TEST)
+    
+    return train_ds, val_ds, test_ds
+
 
 def load_dataloader(ds: ConcatDataset, data_config: DataConfig):
     dl = TimeSeriesDataLoader(
@@ -345,4 +366,3 @@ class TimeSeriesDataLoader(DataLoader):
             drop_last=drop_last,
             **kwargs
         ) 
-

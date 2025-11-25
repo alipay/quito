@@ -6,4 +6,5 @@ class MetricType(Enum):
     MAE = 'mae'
     CRPS = 'crps'
     RMSE = 'rmse'
+    LOSS = 'loss'
     

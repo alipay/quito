@@ -157,7 +157,7 @@ class MoriaiModelConfig(ModelConfig):
     target_dim: int = 1  # Number of target variables
     feat_dynamic_real_dim: int = 0  # Number of dynamic real features
     past_feat_dynamic_real_dim: int = 0  # Number of past dynamic real features
-    mode: str = "inference"  # "inference" or "pretrain"
+    mode: str = "inference"  # Only "inference" is supported (pretrain is not available)
 
 @dataclass
 class HuggingFaceModelConfig(ModelConfig):

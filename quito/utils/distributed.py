@@ -115,9 +115,14 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
     
     # If no distributed env vars, force single process
     if os.environ.get("MASTER_ADDR") is None:
-        rank = 0
-        world_size = 1
-        local_rank = 0
+        if torch.cuda.is_available():
+            rank = 0
+            world_size = 1
+            local_rank = 0
+        else:
+            rank = -1
+            world_size = -1
+            local_rank = -1
     
     if isinstance(config_path_or_obj, str):
         config = OmegaConf.load(config_path_or_obj)
@@ -126,8 +131,8 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
         config = config_path_or_obj
         config_source = "config object"
 
-    if rank == 0:
-        # make output_dir, only on rank 0 
+    if rank in [0, -1]:
+        # make output_dir, only on rank 0 or cpu mode
         output_dir = make_output_dir(config.logging.output_dir)
     else:
         output_dir = None
@@ -138,7 +143,7 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
     if output_dir:
         config.logging.output_dir = str(output_dir) # Update config with actual path
     
-    if rank == 0:
+    if rank in [0, -1]:
         # Load configuration from YAML file
         logging.info(f"Load configuration from {config_source}")
         # Create output directory
