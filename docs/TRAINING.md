@@ -29,9 +29,10 @@ QUITO supports training time series models on your custom datasets. The framewor
 |-------|------|------------|----------|
 | **PatchTST** | Transformer | ~1M-10M | General purpose, long sequences |
 | **DLinear** | Linear | ~10K-100K | Fast training, simple patterns |
+| **Chronos** | T5-based | 8M-710M | Fine-tuning pre-trained foundation models |
 | **HuggingFace** | Various | Varies | Specific HF models |
 
-**Note**: Chronos and Moirai are inference-only. See [EVALUATION.md](EVALUATION.md) for details.
+**Note**: Moirai is inference-only. See [EVALUATION.md](EVALUATION.md) for details.
 
 ## Training Scripts
 
@@ -42,6 +43,9 @@ Located in `examples/`, these are self-contained and require no command-line arg
 ```bash
 # PatchTST - Transformer-based model
 python examples/train_patchtst.py
+
+# Chronos - Fine-tune pre-trained foundation model
+python examples/train_chronos.py
 
 # HuggingFace models
 python examples/train_huggingface.py

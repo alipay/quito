@@ -22,7 +22,7 @@ data:
 
 model:
   model_name: "chronos"
-  pretrained_model_name_or_path: "amazon/chronos-t5-small"
+  pretrained_model_name_or_path: "amazon/chronos-t5-tiny"  # Using tiny for faster testing
   prediction_length: 96
   num_samples: 20
   temperature: 1.0

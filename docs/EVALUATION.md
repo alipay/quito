@@ -46,7 +46,7 @@ python examples/eval_chronos.py
 **Features:**
 - Zero-shot forecasting (pretrained on massive datasets)
 - **Probabilistic forecasting** (generates samples and quantiles)
-- Fine-tuning supported (use `train.py` with Chronos config)
+- **Fine-tuning supported** (use `examples/train_chronos.py` or `scripts/train.py` with Chronos config)
 
 **Configuration:** `examples/configs/chronos.yaml`
 
