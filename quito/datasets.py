@@ -54,7 +54,7 @@ def load_datasets(
     
     if not ds_lst:
         return None
-
+    
     ds = ConcatDataset(ds_lst)
     
     logging.info(f"{task} {mode} dataset size: {len(ds)} samples")
@@ -78,7 +78,7 @@ def get_dataset(data_config: DataConfig, task: TaskType = TaskType.FINE_TUNE) ->
     test_ds = load_datasets(data_config, task, ModeType.TEST)
     
     return train_ds, val_ds, test_ds
-
+    
 
 def load_dataloader(ds: ConcatDataset, data_config: DataConfig):
     dl = TimeSeriesDataLoader(

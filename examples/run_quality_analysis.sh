@@ -30,8 +30,8 @@ OUTPUT_FILE="$PROJECT_ROOT/examples/quality_results.json"
 LOG_FILE="$PROJECT_ROOT/examples/quality_analysis.log"
 
 # Analysis parameters
-MAX_LENGTH=5000          # Reasonable for hourly data (5000 hours ≈ 208 days ≈ 7 months)
-MAX_SERIES_PER_FILE=0    # 0 = analyze ALL item IDs (no sampling)
+MAX_LENGTH=1000          # Truncate to last 1000 points per series (faster analysis, ~42 days of hourly data)
+MAX_SERIES_PER_FILE=300  # 300 = sample 300 series per file (faster)
 SAMPLING_STRATEGY="first" # Not used when MAX_SERIES_PER_FILE=0, but kept for consistency
 PERIOD=24                # Hourly data with daily seasonality
 USE_ALL_INDICES=true     # Analyze all ind_1 through ind_5
@@ -50,13 +50,14 @@ if [ "$MAX_SERIES_PER_FILE" -eq 0 ]; then
     echo "  Max series per file: ALL item IDs (no sampling)"
 else
     echo "  Max series per file: $MAX_SERIES_PER_FILE (sampled)"
-    echo "  Sampling strategy: $SAMPLING_STRATEGY"
+echo "  Sampling strategy: $SAMPLING_STRATEGY"
 fi
 echo "  Period: $PERIOD"
 echo "  Use all indices: $USE_ALL_INDICES"
+echo "  ADF stationarity test: ENABLED (requires 'arch' package)"
 echo ""
 if [ "$USE_ALL_INDICES" = true ]; then
-    echo "This will analyze ALL item IDs across ALL indices (ind_1 to ind_5)."
+echo "This will analyze ALL item IDs across ALL indices (ind_1 to ind_5)."
 else
     echo "This will analyze ALL item IDs for the specified value column."
 fi
@@ -74,7 +75,15 @@ fi
 
 # Build command (run from project root)
 cd "$PROJECT_ROOT"
-CMD="python examples/analyze_open_hour_train_quality.py"
+
+# Use the python from 'llm' environment if available, otherwise default python
+PYTHON_CMD="python"
+if [ -f "/opt/miniconda3/envs/llm/bin/python" ]; then
+    PYTHON_CMD="/opt/miniconda3/envs/llm/bin/python"
+    echo "Using 'llm' conda environment python: $PYTHON_CMD"
+fi
+
+CMD="$PYTHON_CMD examples/analyze_open_hour_train_quality.py"
 CMD="$CMD --data_dir $DATA_DIR"
 CMD="$CMD --max_length $MAX_LENGTH"
 CMD="$CMD --sampling_strategy $SAMPLING_STRATEGY"
@@ -86,11 +95,11 @@ if [ "$USE_ALL_INDICES" = true ]; then
 fi
 
 # Always pass max_series_per_file (0 means no limit/all items)
-CMD="$CMD --max_series_per_file $MAX_SERIES_PER_FILE"
+    CMD="$CMD --max_series_per_file $MAX_SERIES_PER_FILE"
 
-# Optional: Add ADF test (slower but more comprehensive)
-# Uncomment the line below if you want stationarity testing
-# CMD="$CMD --compute_adf"
+# ADF test enabled (stationarity testing - slower but more comprehensive)
+# Note: Requires 'arch' package (pip install arch)
+CMD="$CMD --compute_adf"
 
 echo "Starting analysis in background..."
 echo "Command: $CMD"

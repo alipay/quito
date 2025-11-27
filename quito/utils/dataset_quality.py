@@ -239,11 +239,28 @@ def evaluate_series(
     miss = missing_ratio(x)
     eff = effective_length(x)
 
-    fcast = forecastability_welch(x, fs=fs, window=forecast_window)
-    seas = seasonality_strength_stl(x, period)
-
     x_cv = fill_missing(x, how=fill_for_metrics)
     cv = coefficient_of_variation(x_cv)
+
+    # Handle constant series (cv=0) gracefully
+    if cv == 0.0:
+        # Constant series: no forecastability (predictable=1? or entropy=0?), no seasonality, stationary
+        # Entropy of constant series is 0 -> forecastability = 1.0
+        # But standard welch might return something else if not careful.
+        # Seasonality strength = 0.0 (no variation)
+        # ADF: Technically stationary, but test fails. Set to very low value (e.g. -100) or NaN?
+        # Let's set reasonable defaults for constant series.
+        return SeriesQuality(
+            forecastability=1.0,  # Perfectly predictable
+            season_strength=0.0,  # No seasonality
+            missing_ratio=miss,
+            eff_length=eff,
+            cv=0.0,
+            adf_stat=-99.9  # Indicates strong stationarity (constant)
+        )
+
+    fcast = forecastability_welch(x, fs=fs, window=forecast_window)
+    seas = seasonality_strength_stl(x, period)
 
     adf_val = np.nan
     if compute_adf and ARCH_AVAILABLE:
@@ -251,7 +268,9 @@ def evaluate_series(
             x_adf = fill_missing(x, how=adf_fill)
             adf_val = float(ADF(x_adf).stat)
         except Exception as e:
-            logger.warning(f"ADF test failed for series: {e}")
+            # Suppress common ADF errors for short/constant series to reduce log noise
+            if "singular regressor matrix" not in str(e):
+                logger.warning(f"ADF test failed for series: {e}")
             adf_val = np.nan
 
     return SeriesQuality(
