@@ -69,6 +69,106 @@ _EPS = 1e-12
 ArrayLike = Union[np.ndarray, List[float]]
 
 
+# ------------------------- Hurst Exponent -------------------------
+
+def hurst_exponent(x: np.ndarray, min_window: int = 20, max_window: Optional[int] = None) -> float:
+    """
+    Compute Hurst exponent using R/S (Rescaled Range) analysis.
+    
+    The Hurst exponent H measures long-range dependence:
+    - H < 0.5: Anti-persistent (mean-reverting)
+    - H = 0.5: Random walk (no memory)  
+    - H > 0.5: Persistent (trending)
+    
+    Args:
+        x: 1D time series array
+        min_window: Minimum window size for R/S calculation
+        max_window: Maximum window size (default: len(x) // 2)
+    
+    Returns:
+        Hurst exponent in [0, 1], or NaN if computation fails
+    """
+    x = np.asarray(x, dtype=float)
+    x = x[~np.isnan(x)]
+    
+    n = len(x)
+    if n < min_window * 4:
+        return np.nan
+    
+    if max_window is None:
+        max_window = n // 2
+    
+    max_window = min(max_window, n // 2)
+    if max_window < min_window:
+        return np.nan
+    
+    # Generate window sizes - use factors of n for better coverage
+    # Start from min_window and go up by multiplying by ~sqrt(2)
+    window_sizes = []
+    divisors = [d for d in range(min_window, max_window + 1) if n % d == 0 or n // d >= 2]
+    
+    if len(divisors) < 3:
+        # Fallback: use geometric progression
+        size = min_window
+        while size <= max_window:
+            window_sizes.append(int(size))
+            size *= 1.4  # ~sqrt(2)
+        window_sizes = list(set(window_sizes))  # Remove duplicates
+    else:
+        window_sizes = divisors
+    
+    window_sizes = sorted(window_sizes)
+    if len(window_sizes) < 3:
+        return np.nan
+    
+    rs_values = []
+    for ws in window_sizes:
+        rs_list = []
+        num_windows = n // ws
+        
+        if num_windows < 1:
+            continue
+            
+        for i in range(num_windows):
+            chunk = x[i * ws:(i + 1) * ws]
+            if len(chunk) < ws:
+                continue
+                
+            mean_chunk = np.mean(chunk)
+            
+            # Cumulative deviation from mean
+            y = np.cumsum(chunk - mean_chunk)
+            
+            # Range
+            r = np.max(y) - np.min(y)
+            
+            # Standard deviation (use ddof=0 for population std)
+            s = np.std(chunk, ddof=0)
+            
+            if s > _EPS and r > 0:
+                rs_list.append(r / s)
+        
+        if rs_list:
+            rs_values.append((ws, np.mean(rs_list)))
+    
+    if len(rs_values) < 3:
+        return np.nan
+    
+    # Linear regression in log-log space: log(R/S) = H * log(n) + c
+    log_n = np.log([v[0] for v in rs_values])
+    log_rs = np.log([v[1] for v in rs_values])
+    
+    # Simple linear regression with proper normalization
+    try:
+        # Use least squares
+        A = np.vstack([log_n, np.ones(len(log_n))]).T
+        slope, _ = np.linalg.lstsq(A, log_rs, rcond=None)[0]
+        # Clamp to [0, 1] range
+        return float(np.clip(slope, 0.0, 1.0))
+    except Exception:
+        return np.nan
+
+
 # ------------------------- Utilities -------------------------
 
 def _to_1d_numpy(x: ArrayLike) -> np.ndarray:
@@ -84,10 +184,19 @@ def _to_1d_numpy(x: ArrayLike) -> np.ndarray:
 def spectral_entropy_welch(x: np.ndarray, fs: float = 1.0, nperseg: Optional[int] = None) -> float:
     """
     Normalized spectral entropy in [0,1] using Welch's method.
+    
+    Returns:
+        0.0 for constant/zero-variance series (perfectly predictable)
+        1.0 for maximum entropy (white noise)
     """
     x = np.asarray(x, dtype=float)
     if x.size == 0 or np.all(np.isnan(x)):
         return 1.0  # maximal entropy
+    
+    # Check for constant series (zero variance)
+    if np.std(x) < _EPS:
+        return 0.0  # zero entropy = perfectly predictable
+    
     x = x - np.nanmean(x)
     x = np.nan_to_num(x, nan=0.0)
     if nperseg is None:
@@ -126,23 +235,62 @@ def forecastability_welch(
     return float(np.nanmean(vals)) if vals else np.nan
 
 
+def stl_decomposition_strengths(x: np.ndarray, period: Optional[int]) -> tuple:
+    """
+    Compute both seasonality and trend strength from a single STL decomposition.
+    
+    Seasonality strength = 1 - Var(resid) / Var(seasonal + resid) in [0,1]
+    Trend strength = 1 - Var(resid) / Var(trend + resid) in [0,1]
+    
+    Returns:
+        (seasonality_strength, trend_strength) tuple, or (NaN, NaN) if computation fails
+    """
+    if not STL_AVAILABLE or not period or period < 2 or period >= len(x):
+        return np.nan, np.nan
+    if np.all(np.isnan(x)):
+        return np.nan, np.nan
+    x = np.nan_to_num(x, nan=float(np.nanmedian(x)))
+    try:
+        res = STL(x, period=period, robust=True).fit()
+        resid = res.resid
+        seas = res.seasonal
+        trend = res.trend
+        
+        # Seasonality strength
+        seas_den = np.var(seas + resid) + _EPS
+        seas_strength = float(max(0.0, 1.0 - np.var(resid) / seas_den))
+        
+        # Trend strength
+        trend_den = np.var(trend + resid) + _EPS
+        trend_strength = float(max(0.0, 1.0 - np.var(resid) / trend_den))
+        
+        return seas_strength, trend_strength
+    except Exception:
+        return np.nan, np.nan
+
+
 def seasonality_strength_stl(x: np.ndarray, period: Optional[int]) -> float:
     """
     Seasonality strength = 1 - Var(resid) / Var(seasonal + resid) in [0,1].
     Returns NaN if period invalid or statsmodels unavailable.
+    
+    Note: For computing both seasonality and trend, use stl_decomposition_strengths() instead.
     """
-    if not STL_AVAILABLE or not period or period < 2 or period >= len(x):
-        return np.nan
-    if np.all(np.isnan(x)):
-        return np.nan
-    x = np.nan_to_num(x, nan=float(np.nanmedian(x)))
-    try:
-        res = STL(x, period=period, robust=True).fit()
-        resid, seas = res.resid, res.seasonal
-        den = np.var(seas + resid) + _EPS
-        return float(max(0.0, 1.0 - np.var(resid) / den))
-    except Exception:
-        return np.nan
+    seas, _ = stl_decomposition_strengths(x, period)
+    return seas
+
+
+def trend_strength_stl(x: np.ndarray, period: Optional[int]) -> float:
+    """
+    Trend strength = 1 - Var(resid) / Var(trend + resid) in [0,1].
+    Measures how strong the trend component is relative to residual noise.
+    - Close to 1 → strong trend
+    - Close to 0 → little or no trend
+    
+    Note: For computing both seasonality and trend, use stl_decomposition_strengths() instead.
+    """
+    _, trend = stl_decomposition_strengths(x, period)
+    return trend
 
 
 def missing_ratio(x: np.ndarray) -> float:
@@ -207,10 +355,12 @@ def fill_missing(x: np.ndarray, how: str = 'none') -> np.ndarray:
 class SeriesQuality:
     forecastability: float
     season_strength: float
+    trend_strength: float  # Trend strength from STL decomposition
     missing_ratio: float
     eff_length: int
     cv: float
     adf_stat: float  # may be np.nan
+    hurst: float  # Hurst exponent, may be np.nan
 
     def to_dict(self) -> Dict[str, float]:
         return asdict(self)
@@ -221,6 +371,7 @@ def evaluate_series(
     period: Optional[int] = None,
     fs: float = 1.0,
     compute_adf: bool = False,
+    compute_hurst: bool = True,
     adf_fill: str = 'mean',
     forecast_window: Optional[int] = None,
     fill_for_metrics: str = 'none'
@@ -233,6 +384,7 @@ def evaluate_series(
     - Seasonality strength via STL on series with NaNs filled by median (internal).
     - CV computed on series with chosen fill (fill_for_metrics).
     - ADF (optional) uses 'arch' and is applied to filled series (adf_fill).
+    - Hurst exponent (optional) measures long-range dependence.
     """
     x = _to_1d_numpy(x)
 
@@ -246,21 +398,20 @@ def evaluate_series(
     if cv == 0.0:
         # Constant series: no forecastability (predictable=1? or entropy=0?), no seasonality, stationary
         # Entropy of constant series is 0 -> forecastability = 1.0
-        # But standard welch might return something else if not careful.
-        # Seasonality strength = 0.0 (no variation)
-        # ADF: Technically stationary, but test fails. Set to very low value (e.g. -100) or NaN?
-        # Let's set reasonable defaults for constant series.
+        # Hurst = 0.5 for constant (no memory)
         return SeriesQuality(
             forecastability=1.0,  # Perfectly predictable
             season_strength=0.0,  # No seasonality
+            trend_strength=0.0,   # No trend
             missing_ratio=miss,
             eff_length=eff,
             cv=0.0,
-            adf_stat=-99.9  # Indicates strong stationarity (constant)
+            adf_stat=-99.9,  # Indicates strong stationarity (constant)
+            hurst=0.5  # No memory for constant series
         )
 
     fcast = forecastability_welch(x, fs=fs, window=forecast_window)
-    seas = seasonality_strength_stl(x, period)
+    seas, trend = stl_decomposition_strengths(x, period)  # Single STL computation
 
     adf_val = np.nan
     if compute_adf and ARCH_AVAILABLE:
@@ -273,13 +424,21 @@ def evaluate_series(
                 logger.warning(f"ADF test failed for series: {e}")
             adf_val = np.nan
 
+    # Compute Hurst exponent
+    hurst_val = np.nan
+    if compute_hurst:
+        x_filled = fill_missing(x, how='mean')
+        hurst_val = hurst_exponent(x_filled)
+
     return SeriesQuality(
         forecastability=fcast,
         season_strength=seas,
+        trend_strength=trend,
         missing_ratio=miss,
         eff_length=eff,
         cv=cv,
-        adf_stat=adf_val
+        adf_stat=adf_val,
+        hurst=hurst_val
     )
 
 
@@ -288,25 +447,31 @@ def summarize_dataset_medians(
     period: Optional[int] = None,
     fs: float = 1.0,
     compute_adf: bool = False,
+    compute_hurst: bool = True,
     forecast_window: Optional[int] = None
 ) -> Dict[str, float]:
     """
     QUITO medians (robust, simple).
     """
     rows = [evaluate_series(s, period=period, fs=fs, compute_adf=compute_adf,
+                            compute_hurst=compute_hurst,
                             forecast_window=forecast_window) for s in series_list]
     F = np.array([r.forecastability for r in rows], float)
     S = np.array([r.season_strength for r in rows], float)
+    T = np.array([r.trend_strength for r in rows], float)
     M = np.array([r.missing_ratio for r in rows], float)
     L = np.array([r.eff_length for r in rows], float)
     A = np.array([r.adf_stat for r in rows], float)
+    H = np.array([r.hurst for r in rows], float)
 
     med = lambda a: float(np.nanmedian(a)) if a.size else float('nan')
     out = {
         "forecastability_med": med(F),
         "season_strength_med": med(S),
+        "trend_strength_med": med(T),
         "missing_med": med(M),
         "length_med": med(L),
+        "hurst_med": med(H),
         "n_series": len(series_list),
     }
     if compute_adf:
@@ -319,6 +484,7 @@ def evaluate_dataset(
     period: Optional[int] = None,
     fs: float = 1.0,
     compute_adf: bool = False,
+    compute_hurst: bool = True,
     forecast_window: Optional[int] = None,
     fill_for_metrics: str = 'none',
     verbose: bool = True
@@ -326,7 +492,7 @@ def evaluate_dataset(
     """
     Weighted & unweighted dataset summaries + totals (QUITO).
     """
-    lengths, fcasts, cvs, missings, adfs = [], [], [], [], []
+    lengths, fcasts, cvs, missings, adfs, hursts, trends = [], [], [], [], [], [], []
     num_failed = 0
 
     for i, s in enumerate(series_list):
@@ -335,12 +501,15 @@ def evaluate_dataset(
         try:
             r = evaluate_series(
                 s, period=period, fs=fs, compute_adf=compute_adf,
+                compute_hurst=compute_hurst,
                 forecast_window=forecast_window, fill_for_metrics=fill_for_metrics
             )
             lengths.append(r.eff_length)
             fcasts.append(r.forecastability)
             cvs.append(r.cv)
             missings.append(r.missing_ratio)
+            hursts.append(r.hurst)
+            trends.append(r.trend_strength)
             if compute_adf:
                 adfs.append(r.adf_stat)
         except Exception as e:
@@ -352,6 +521,8 @@ def evaluate_dataset(
     F = np.asarray(fcasts, float)
     C = np.asarray(cvs, float)
     M = np.asarray(missings, float)
+    H = np.asarray(hursts, float)
+    T = np.asarray(trends, float)
     A = np.asarray(adfs, float) if compute_adf else np.array([])
 
     total_points = float(np.nansum(L)) if L.size else 0.0
@@ -370,6 +541,8 @@ def evaluate_dataset(
         "forecastability": wavg(F, L),
         "cv": wavg(C, L),
         "missing_ratio": wavg(M, L),
+        "hurst": wavg(H, L),
+        "trend_strength": wavg(T, L),
     }
     if compute_adf and A.size:
         weighted["adf_stat"] = wavg(A, L[:len(A)])
@@ -378,6 +551,8 @@ def evaluate_dataset(
         "forecastability": float(np.nanmean(F)) if F.size else float('nan'),
         "cv": float(np.nanmean(C)) if C.size else float('nan'),
         "missing_ratio": float(np.nanmean(M)) if M.size else float('nan'),
+        "hurst": float(np.nanmean(H)) if H.size else float('nan'),
+        "trend_strength": float(np.nanmean(T)) if T.size else float('nan'),
     }
     if compute_adf and A.size:
         unweighted["adf_stat"] = float(np.nanmean(A))

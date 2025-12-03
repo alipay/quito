@@ -3,21 +3,34 @@
 Analyze Dataset Quality for open_hour_train Parquet Files
 
 This script analyzes the quality of time series data in the open_hour_train directory.
-It handles large-scale series by truncating or sampling them for efficient analysis.
+By default, it processes ALL items with FULL length across ALL indices (ind_1 to ind_5).
+
+Metrics computed:
+    - Forecastability: 1 - spectral_entropy (higher = more predictable)
+    - Seasonality strength: STL decomposition (higher = stronger periodic patterns)
+    - Trend strength: STL decomposition (higher = stronger trend)
+    - Hurst exponent: Long-range dependence (H<0.5=mean-reverting, H=0.5=random, H>0.5=trending)
+    - CV: Coefficient of variation (variability relative to mean)
+    - Missing ratio: Fraction of NaN values
+    - Effective length: Number of non-NaN values
+    - ADF stat (optional): Augmented Dickey-Fuller test for stationarity
 
 Usage:
-    # Analyze all files with default settings (truncate to 10k points, sample 100 series)
+    # Analyze all files with default settings (full length, all items, all indices)
     python examples/analyze_open_hour_train_quality.py
 
-    # Custom truncation and sampling
+    # Custom truncation and sampling for faster analysis
     python examples/analyze_open_hour_train_quality.py \
         --max_length 5000 \
-        --max_series_per_file 50 \
+        --max_series_per_file 100 \
         --sampling_strategy random
 
     # Analyze specific files
     python examples/analyze_open_hour_train_quality.py \
         --files hour_train_hour_p1.parquet hour_train_hour_p2.parquet
+
+    # Disable Hurst exponent computation for speed
+    python examples/analyze_open_hour_train_quality.py --no-compute-hurst
 
 Dependencies:
     Core: numpy, scipy, pandas
@@ -186,6 +199,7 @@ def analyze_single_file(
     sampling_strategy: str = 'random',
     period: int = 24,
     compute_adf: bool = False,
+    compute_hurst: bool = True,
     use_all_indices: bool = False,
     output_path: Optional[Path] = None
 ):
@@ -220,7 +234,8 @@ def analyze_single_file(
         metrics = evaluate_series(
             series,
             period=period,
-            compute_adf=compute_adf
+            compute_adf=compute_adf,
+            compute_hurst=compute_hurst
         )
         all_series_metrics.append({
             'item_id': meta['item_id'],
@@ -229,7 +244,7 @@ def analyze_single_file(
         })
     
     # Aggregate by item_id and index
-    # Structure: items_dict[f"{item_id}_{index}"] = {forecastability, season_strength, missing_ratio, eff_length, cv, adf_stat}
+    # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
     items_dict = {}
     indices_dict = {}
     
@@ -270,14 +285,14 @@ def analyze_single_file(
                 index_summaries[index][f'{key}_median'] = float(np.median(values))
     
     # Build comprehensive results
-    # Structure: by_item[f"{item_id}_{index}"] contains all metrics for that item/index combination
-    # Example: by_item["0_ind_1"] = {forecastability, season_strength, missing_ratio, eff_length, cv, adf_stat}
+    # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
     unique_item_ids = set(entry['item_id'] for entry in all_series_metrics)
     results = {
         'summary': evaluate_dataset(
             series_list,
             period=period,
             compute_adf=compute_adf,
+            compute_hurst=compute_hurst,
             verbose=False
         ),
         'totals': totals,
@@ -312,6 +327,7 @@ def analyze_multiple_files(
     sampling_strategy: str = 'random',
     period: int = 24,
     compute_adf: bool = False,
+    compute_hurst: bool = True,
     compare: bool = True,
     use_all_indices: bool = False,
     output_path: Optional[Path] = None
@@ -403,7 +419,8 @@ def analyze_multiple_files(
             metrics = evaluate_series(
                 series,
                 period=period,
-                compute_adf=compute_adf
+                compute_adf=compute_adf,
+                compute_hurst=compute_hurst
             )
             
             # Store metrics
@@ -461,6 +478,7 @@ def analyze_multiple_files(
                         series_list[:idx], # Evaluate dataset summary on processed part
                         period=period,
                         compute_adf=compute_adf,
+                        compute_hurst=compute_hurst,
                         verbose=False
                     ),
                     'totals': current_totals,
@@ -479,7 +497,7 @@ def analyze_multiple_files(
         logger.info(f"Aggregating metrics by item_id and index...")
         
         # Aggregate by item_id and index
-        # Structure: items_dict[f"{item_id}_{index}"] = {forecastability, season_strength, missing_ratio, eff_length, cv, adf_stat}
+        # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
         items_dict = {}
         indices_dict = {}
         
@@ -520,14 +538,14 @@ def analyze_multiple_files(
                     index_summaries[index][f'{key}_median'] = float(np.median(values))
         
         # Build comprehensive results
-        # Structure: by_item[f"{item_id}_{index}"] contains all metrics for that item/index combination
-        # Example: by_item["0_ind_1"] = {forecastability, season_strength, missing_ratio, eff_length, cv, adf_stat}
+        # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
         unique_item_ids = set(entry['item_id'] for entry in all_series_metrics)
         results = {
             'summary': evaluate_dataset(
                 series_list,
                 period=period,
                 compute_adf=compute_adf,
+                compute_hurst=compute_hurst,
                 verbose=False
             ),
             'totals': totals,
@@ -598,18 +616,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Analyze all files with defaults
+  # Analyze all files with defaults (full length, all items, all indices)
   python examples/analyze_open_hour_train_quality.py
 
-  # Custom settings
+  # Faster analysis with sampling
   python examples/analyze_open_hour_train_quality.py \\
       --max_length 5000 \\
-      --max_series_per_file 50 \\
-      --sampling_strategy uniform
+      --max_series_per_file 100
 
   # Analyze specific files
   python examples/analyze_open_hour_train_quality.py \\
       --files hour_train_hour_p1.parquet hour_train_hour_p2.parquet
+
+  # Skip Hurst exponent for faster analysis
+  python examples/analyze_open_hour_train_quality.py --no-compute-hurst
+
+  # Include ADF stationarity test (slow)
+  python examples/analyze_open_hour_train_quality.py --compute_adf
         """
     )
     
@@ -638,15 +661,15 @@ Examples:
     parser.add_argument(
         '--max_length',
         type=int,
-        default=10000,
-        help='Maximum length per series (truncate if longer, default: 10000)'
+        default=0,
+        help='Maximum length per series (truncate if longer, default: 0 for full length)'
     )
     
     parser.add_argument(
         '--max_series_per_file',
         type=int,
-        default=100,
-        help='Maximum number of series to sample per file (default: 100, use 0 for all)'
+        default=0,
+        help='Maximum number of series to sample per file (default: 0 for all items)'
     )
     
     parser.add_argument(
@@ -667,7 +690,15 @@ Examples:
     parser.add_argument(
         '--compute_adf',
         action='store_true',
-        help='Compute ADF stationarity test (requires arch package)'
+        default=False,
+        help='Compute ADF stationarity test (default: False, slow)'
+    )
+    
+    parser.add_argument(
+        '--compute_hurst',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Compute Hurst exponent (default: True)'
     )
     
     parser.add_argument(
@@ -677,9 +708,9 @@ Examples:
     )
 
     parser.add_argument(
-        '--use_all_indices',
+        '--no_all_indices',
         action='store_true',
-        help='Use all columns starting with "ind_" as independent series'
+        help='Only use first value column instead of all ind_* columns'
     )
 
     parser.add_argument(
@@ -711,14 +742,21 @@ Examples:
             logger.error(f"No parquet files found in {data_dir}")
             return
     
+    # Derive boolean flags
+    use_all_indices = not args.no_all_indices
+    compute_hurst = args.compute_hurst
+    max_length = args.max_length if args.max_length > 0 else None
+    max_series = args.max_series_per_file if args.max_series_per_file > 0 else None
+    
     logger.info(f"Found {len(file_paths)} parquet file(s) to analyze")
     logger.info(f"Settings:")
-    logger.info(f"  Max length per series: {args.max_length}")
-    logger.info(f"  Max series per file: {args.max_series_per_file}")
+    logger.info(f"  Max length per series: {max_length or 'Full length'}")
+    logger.info(f"  Max series per file: {max_series or 'All items'}")
     logger.info(f"  Sampling strategy: {args.sampling_strategy}")
     logger.info(f"  Seasonal period: {args.period}")
     logger.info(f"  Compute ADF: {args.compute_adf}")
-    logger.info(f"  Use all indices: {args.use_all_indices}")
+    logger.info(f"  Compute Hurst: {compute_hurst}")
+    logger.info(f"  Use all indices: {use_all_indices}")
     if args.output_file:
         logger.info(f"  Output file: {args.output_file}")
 
@@ -730,12 +768,13 @@ Examples:
         analyze_single_file(
             file_paths[0],
             value_col=args.value_col,
-            max_length=args.max_length,
-            max_series=args.max_series_per_file,
+            max_length=max_length,
+            max_series=max_series,
             sampling_strategy=args.sampling_strategy,
             period=args.period,
             compute_adf=args.compute_adf,
-            use_all_indices=args.use_all_indices,
+            compute_hurst=compute_hurst,
+            use_all_indices=use_all_indices,
             output_path=output_path
         )
     else:
@@ -743,13 +782,14 @@ Examples:
         analyze_multiple_files(
             file_paths,
             value_col=args.value_col,
-            max_length=args.max_length,
-            max_series=args.max_series_per_file,
+            max_length=max_length,
+            max_series=max_series,
             sampling_strategy=args.sampling_strategy,
             period=args.period,
             compute_adf=args.compute_adf,
+            compute_hurst=compute_hurst,
             compare=not args.no_compare,
-            use_all_indices=args.use_all_indices,
+            use_all_indices=use_all_indices,
             output_path=output_path
         )
     
