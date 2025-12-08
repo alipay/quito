@@ -290,7 +290,7 @@ class BaseTrainer(ABC):
             logging.info('Checkpoint loaded from {}'.format(checkpoint_path))
         else:
             logging.info('Perform training from scratch ...')
-        
+
     def _load_checkpoint(self, checkpoint):
         self.actual_model.load(checkpoint)
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

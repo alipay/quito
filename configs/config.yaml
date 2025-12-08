@@ -22,17 +22,17 @@ data:
       ds_kwargs: {}
       target: 'ind_1'
     # MIN_P1: 
-    #   file_name: "train_min_p1.parquet"
-    #   train_ratio: 0.8
-    #   valid_ratio: 0.1
-    #   test_ratio: 0.1
-    #   is_pretrain: True
-    #   freq: 'M'
-    #   ds_cls: 'TimeSeriesDataset'
-    #   ds_kwargs: {}
-    #   target: 'ind_1'
-    #   anomaly_remove_method: null
-    #   na_impute_method: 'linear'
+      # file_name: "train_min_p1.parquet"
+      # train_ratio: 0.8
+      # valid_ratio: 0.1
+      # test_ratio: 0.1
+      # is_pretrain: True
+      # freq: 'M'
+      # ds_cls: 'TimeSeriesDataset'
+      # ds_kwargs: {}
+      # target: 'ind_1'
+      # anomaly_remove_method: null
+      # na_impute_method: 'linear'
     # MIN_P2: 
     #   file_name: "train_min_p2.parquet"
     #   train_ratio: 0.8
@@ -43,8 +43,8 @@ data:
     #   ds_cls: 'TimeSeriesDataset'
     #   ds_kwargs: {}
     #   target: 'ind_1'
-    #   anomaly_remove_method: 'stl'
-    #   na_impute_method: 'linear'
+      # anomaly_remove_method: 'stl'
+      # na_impute_method: 'linear'
     # MIN_P3: 
     #   file_name: "train_min_p3.parquet"
     #   train_ratio: 0.8
@@ -73,15 +73,19 @@ data:
 # Model Configuration
 model:
   # model_name: 'dlinear'
-  model_name: "patchtst"  # Model architecture: pyraformer, informer, autoformer, patchtst
-  d_model: 16  # Model dimension
-  n_heads: 8  # Number of attention heads
-  d_ff: 128  # Dimension of feedforward network
-  dropout: 0.3  # Dropout rate
-  activation: "gelu"  # Activation function
-  norm: 'layer'
-  patch_len: 16
-  stride: 8
+  model_name: "tstransformer"  # Model architecture: pyraformer, informer, autoformer, patchtst
+  time_pe_type: null
+  feature_pe_type: null
+  d_model: 512
+  layers: ['feature_full', 'time_full', 'feature_full', 'time_full']
+  # d_model: 16  # Model dimension
+  # n_heads: 8  # Number of attention heads
+  # d_ff: 128  # Dimension of feedforward network
+  # dropout: 0.3  # Dropout rate
+  # activation: "gelu"  # Activation function
+  # norm: 'layer'
+  # patch_len: 16
+  # stride: 8
 
 # Training Configuration
 training:
@@ -139,7 +143,7 @@ early_stopping:
 
 evaluation:
   eval_metrics: ['mse', 'mae']
-  eval_steps: null  # Evaluate every N steps,  None if dont want to eval at steps
+  eval_steps: 10000  # Evaluate every N steps,  None if dont want to eval at steps
   eval_epochs: 1 # Evaluate every N epochs, None if dont want to eval at epoch
   save_eval_results_top_k: 10 # wheather to save the last k eval step results, the inputs, predictions and labels during evaluation
 # Resume Training

@@ -158,19 +158,19 @@ def main(config=None):
         global_rank=trainer_global_rank,
         world_size=trainer_world_size
     )
-        logging.info(f"Trainer {trainer.__class__.__name__} created ...")
-        
-        try:
-            results = trainer.train()
+    logging.info(f"Trainer {trainer.__class__.__name__} created ...")
     
-            logging.info("=" * 80)
-            logging.info("Training completed successfully!")
-            logging.info('The results are: \n')
-            logging.info(results)
-        
-        except Exception as e:
-            logging.error(f"Training failed with error: {e}, perform cleaning ...")
-            raise
+    try:
+        results = trainer.train()
+
+        logging.info("=" * 80)
+        logging.info("Training completed successfully!")
+        logging.info('The results are: \n')
+        logging.info(results)
+    
+    except Exception as e:
+        logging.error(f"Training failed with error: {e}, perform cleaning ...")
+        raise
         
 
 if __name__ == "__main__":

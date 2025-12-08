@@ -18,6 +18,7 @@ class ModelType(Enum):
     CHRONOS = 'chronos'
     MORIAI = 'moriai'
     HUGGINGFACE = 'huggingface'
+    TSTRANSFORMER = 'tstransformer'
 
 @dataclass
 class ModelConfig(BaseConfig):
@@ -166,3 +167,41 @@ class HuggingFaceModelConfig(ModelConfig):
     """
     pretrained_model_name_or_path: str = "google/timesfm-1.0-200m"
     trust_remote_code: bool = True
+
+@dataclass
+class TSTransformerModelConfig(ModelConfig):
+    """
+    Configuration for TSTransformer model.
+    """
+    layers: list = field(default_factory=lambda: [
+        'time_full',
+        'feature_full', 
+        'time_full', 
+        'feature_full', 
+        'time_full', 
+        'feature_full', 
+        'time_full', 
+        'feature_full', 
+        'time_full', 
+        'feature_full',
+        'time_full', 
+        'feature_full'])
+    
+    patch_size: int = 8
+    time_pe_type: str = None
+    feature_pe_type: str = 'subspace'
+    d_model: int = 512
+    d_ff: int = 1024
+    act: str = 'GELU'
+    n_heads: int = 8
+    num_groups: int = None
+    d_k: int = None
+    d_v: int = None
+    attn_dropout: float = 0.0
+    pre_norm: bool = True
+    norm_type: str = 'LayerNorm'
+    rope: bool = False
+    dropout: float = 0.0
+    max_context_len: int = 5000
+    max_features: int = 10
+    revin: bool = True
