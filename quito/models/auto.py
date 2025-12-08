@@ -17,6 +17,7 @@ from quito.models.dlinear import DLinear
 from quito.models.chronos import ChronosModel
 from quito.models.moriai import MoriaiModel
 from quito.models.huggingface import HuggingFaceModel
+from quito.models.tstransformer import TSTransformer 
 from quito.config.model import ModelType, ModelConfig
 from quito.config.base import BaseConfig
 from quito.models.base import BaseModel
@@ -30,6 +31,7 @@ MODEL_MAPPING = {
     ModelType.CHRONOS: ChronosModel,
     ModelType.MORIAI: MoriaiModel,
     ModelType.HUGGINGFACE: HuggingFaceModel,
+    ModelType.TSTRANSFORMER: TSTransformer
 }
 
 class AutoModel:

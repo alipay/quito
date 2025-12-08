@@ -290,7 +290,7 @@ class BaseTrainer(ABC):
             logging.info('Checkpoint loaded from {}'.format(checkpoint_path))
         else:
             logging.info('Perform training from scratch ...')
-        
+
     def _load_checkpoint(self, checkpoint):
         self.actual_model.load(checkpoint)
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -693,7 +693,7 @@ class BaseTrainer(ABC):
         # Only sync if distributed is initialized and world size > 1
         if dist.is_initialized() and self.world_size > 1:
             dist.all_reduce(metric, op=dist.ReduceOp.SUM)
-            metric = metric / self.world_size
+        metric = metric / self.world_size
         
         metric = metric.item()
         
