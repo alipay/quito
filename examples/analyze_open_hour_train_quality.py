@@ -39,6 +39,7 @@ Dependencies:
 
 import sys
 import json
+import multiprocessing as mp
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -48,6 +49,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Optional, Tuple, Dict, Any
 from glob import glob
+from functools import partial
 
 from quito.utils.dataset_quality import (
     evaluate_dataset,
@@ -68,6 +70,26 @@ logging.basicConfig(
     format='%(asctime)s %(name)s %(levelname)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _evaluate_series_worker(args):
+    """
+    Worker function for multiprocessing.
+    Takes a tuple of (series, metadata, period, compute_adf, compute_hurst).
+    Returns (metadata, metrics_dict).
+    """
+    series, meta, period, compute_adf, compute_hurst = args
+    metrics = evaluate_series(
+        series,
+        period=period,
+        compute_adf=compute_adf,
+        compute_hurst=compute_hurst
+    )
+    return {
+        'item_id': meta['item_id'],
+        'index': meta['index'],
+        'metrics': metrics.to_dict()
+    }
 
 
 def load_series_with_metadata(
@@ -330,9 +352,15 @@ def analyze_multiple_files(
     compute_hurst: bool = True,
     compare: bool = True,
     use_all_indices: bool = False,
-    output_path: Optional[Path] = None
+    output_path: Optional[Path] = None,
+    num_workers: int = 8
 ):
-    """Analyze quality of multiple parquet files and optionally compare them."""
+    """Analyze quality of multiple parquet files and optionally compare them.
+    
+    Args:
+        num_workers: Number of parallel workers for series evaluation. 
+                     Use 0 for all CPUs, 1 for sequential. Default: 8.
+    """
     logger.info("="*80)
     logger.info("Analyzing Multiple Files")
     logger.info("="*80)
@@ -399,41 +427,70 @@ def analyze_multiple_files(
             continue
         
         logger.info(f"Loaded {len(series_list)} series from {file_path.name}")
-        logger.info(f"Evaluating metrics for all series (this may take a while)...")
         
         # Store for comparison (only for newly processed files)
         if compare:
             datasets[file_path.stem] = series_list
         
         # Evaluate all series with metadata
-        # Initialize aggregation containers
+        total_series = len(series_list)
+        
+        # Determine number of workers
+        actual_workers = num_workers if num_workers > 0 else mp.cpu_count()
+        
+        if actual_workers > 1 and total_series > 10:
+            # Multiprocessing mode
+            logger.info(f"Evaluating {total_series} series using {actual_workers} workers...")
+            
+            # Prepare arguments for workers
+            worker_args = [
+                (series, meta, period, compute_adf, compute_hurst)
+                for series, meta in zip(series_list, metadata_list)
+            ]
+            
+            # Process in parallel with progress updates
+            all_series_metrics = []
+            chunk_size = max(1, total_series // (actual_workers * 4))  # Balance between overhead and progress updates
+            
+            with mp.Pool(processes=actual_workers) as pool:
+                for i, result in enumerate(pool.imap(_evaluate_series_worker, worker_args, chunksize=chunk_size), 1):
+                    all_series_metrics.append(result)
+                    if i % 500 == 0 or i == total_series:
+                        logger.info(f"  Evaluated {i}/{total_series} series ({100*i/total_series:.1f}%)")
+            
+            logger.info(f"Completed parallel evaluation of {len(all_series_metrics)} series")
+        else:
+            # Sequential mode (single worker or small dataset)
+            logger.info(f"Evaluating {total_series} series sequentially...")
+            all_series_metrics = []
+            
+            for idx, (series, meta) in enumerate(zip(series_list, metadata_list), 1):
+                if idx % 100 == 0 or idx == total_series:
+                    logger.info(f"  Evaluating series {idx}/{total_series} (item_id={meta['item_id']}, index={meta['index']})")
+                
+                metrics = evaluate_series(
+                    series,
+                    period=period,
+                    compute_adf=compute_adf,
+                    compute_hurst=compute_hurst
+                )
+                
+                all_series_metrics.append({
+                    'item_id': meta['item_id'],
+                    'index': meta['index'],
+                    'metrics': metrics.to_dict()
+                })
+            
+            logger.info(f"Completed sequential evaluation of {len(all_series_metrics)} series")
+        
+        # Aggregate results
         items_dict = {}
         indices_dict = {}
-        all_series_metrics = []
         
-        total_series = len(series_list)
-        for idx, (series, meta) in enumerate(zip(series_list, metadata_list), 1):
-            if idx % 100 == 0 or idx == total_series:
-                logger.info(f"  Evaluating series {idx}/{total_series} (item_id={meta['item_id']}, index={meta['index']})")
-            
-            metrics = evaluate_series(
-                series,
-                period=period,
-                compute_adf=compute_adf,
-                compute_hurst=compute_hurst
-            )
-            
-            # Store metrics
-            metrics_dict = metrics.to_dict()
-            all_series_metrics.append({
-                'item_id': meta['item_id'],
-                'index': meta['index'],
-                'metrics': metrics_dict
-            })
-            
-            # Aggregate incrementally
-            item_id = meta['item_id']
-            index = meta['index']
+        for entry in all_series_metrics:
+            item_id = entry['item_id']
+            index = entry['index']
+            metrics_dict = entry['metrics']
             
             # Create flat key: "{item_id}_{index}"
             key = f"{item_id}_{index}"
@@ -443,55 +500,6 @@ def analyze_multiple_files(
             if index not in indices_dict:
                 indices_dict[index] = []
             indices_dict[index].append(metrics_dict)
-            
-            # Save intermediate results every 100 series
-            if output_path and (idx % 100 == 0 or idx == total_series):
-                # Build temporary results object
-                # Note: calculating totals/summaries every time might be slow if many series, 
-                # but for 100 interval it's okay.
-                
-                # Compute totals/summaries for what we have so far
-                current_metrics_list = [entry['metrics'] for entry in all_series_metrics]
-                current_totals = {}
-                if current_metrics_list:
-                    for key in current_metrics_list[0].keys():
-                        values = [m[key] for m in current_metrics_list if not np.isnan(m[key])]
-                        if values:
-                            current_totals[f'{key}_mean'] = float(np.mean(values))
-                            current_totals[f'{key}_median'] = float(np.median(values))
-                
-                current_index_summaries = {}
-                for i_name, m_list in indices_dict.items():
-                    current_index_summaries[i_name] = {}
-                    if m_list:
-                        for key in m_list[0].keys():
-                            values = [m[key] for m in m_list if not np.isnan(m[key])]
-                            if values:
-                                current_index_summaries[i_name][f'{key}_mean'] = float(np.mean(values))
-                                current_index_summaries[i_name][f'{key}_median'] = float(np.median(values))
-
-                unique_item_ids = set(entry['item_id'] for entry in all_series_metrics)
-                
-                # Create partial results
-                partial_results = {
-                    'summary': evaluate_dataset(
-                        series_list[:idx], # Evaluate dataset summary on processed part
-                        period=period,
-                        compute_adf=compute_adf,
-                        compute_hurst=compute_hurst,
-                        verbose=False
-                    ),
-                    'totals': current_totals,
-                    'by_index': current_index_summaries,
-                    'by_item': items_dict,
-                    'num_items': len(unique_item_ids),
-                    'num_series': idx,
-                    'indices': list(indices_dict.keys()),
-                    'status': 'partial' if idx < total_series else 'complete'
-                }
-                
-                all_results[file_path.stem] = partial_results
-                save_json(all_results, output_path, logger=None) # partial save, no log spam
         
         logger.info(f"Completed evaluation of {len(all_series_metrics)} series")
         logger.info(f"Aggregating metrics by item_id and index...")
@@ -716,8 +724,15 @@ Examples:
     parser.add_argument(
         '--output_file',
         type=str,
-        default=None,
-        help='Path to save results JSON (supports resume if file exists)'
+        default='examples/quality_results.json',
+        help='Path to save results JSON (default: examples/quality_results.json)'
+    )
+    
+    parser.add_argument(
+        '--num_workers',
+        type=int,
+        default=8,
+        help='Number of parallel workers (0=all CPUs, 1=sequential). Default: 8'
     )
     
     args = parser.parse_args()
@@ -757,10 +772,10 @@ Examples:
     logger.info(f"  Compute ADF: {args.compute_adf}")
     logger.info(f"  Compute Hurst: {compute_hurst}")
     logger.info(f"  Use all indices: {use_all_indices}")
-    if args.output_file:
-        logger.info(f"  Output file: {args.output_file}")
+    logger.info(f"  Output file: {args.output_file}")
+    logger.info(f"  Num workers: {args.num_workers}" + (" (all CPUs)" if args.num_workers == 0 else ""))
 
-    output_path = Path(args.output_file) if args.output_file else None
+    output_path = Path(args.output_file)
     
     # Analyze
     if len(file_paths) == 1:
@@ -790,7 +805,8 @@ Examples:
             compute_hurst=compute_hurst,
             compare=not args.no_compare,
             use_all_indices=use_all_indices,
-            output_path=output_path
+            output_path=output_path,
+            num_workers=args.num_workers
         )
     
     logger.info("\n" + "="*80)
