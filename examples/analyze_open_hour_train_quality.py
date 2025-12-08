@@ -213,6 +213,72 @@ def load_series_with_metadata(
     return series_list, metadata_list
 
 
+def _compute_summary_from_metrics(all_metrics_list: List[Dict], compute_adf: bool = False, compute_hurst: bool = True) -> Dict:
+    """
+    Compute dataset summary statistics from already-computed per-series metrics.
+    This avoids re-evaluating all series when building the summary.
+    """
+    if not all_metrics_list:
+        return {}
+    
+    # Extract arrays from metrics
+    lengths = np.array([m.get('eff_length', 0) for m in all_metrics_list], dtype=float)
+    fcasts = np.array([m.get('forecastability', np.nan) for m in all_metrics_list], dtype=float)
+    cvs = np.array([m.get('cv', np.nan) for m in all_metrics_list], dtype=float)
+    missings = np.array([m.get('missing_ratio', 0) for m in all_metrics_list], dtype=float)
+    seasons = np.array([m.get('season_strength', np.nan) for m in all_metrics_list], dtype=float)
+    trends = np.array([m.get('trend_strength', np.nan) for m in all_metrics_list], dtype=float)
+    hursts = np.array([m.get('hurst', np.nan) for m in all_metrics_list], dtype=float)
+    adfs = np.array([m.get('adf_stat', np.nan) for m in all_metrics_list], dtype=float) if compute_adf else np.array([])
+    
+    total_points = float(np.nansum(lengths)) if lengths.size else 1.0
+    if total_points <= 0:
+        total_points = 1.0
+    
+    def wavg(x, w):
+        """Weighted average ignoring NaNs."""
+        mask = ~np.isnan(x) & ~np.isnan(w)
+        if not mask.any():
+            return np.nan
+        return float(np.sum(x[mask] * w[mask]) / np.sum(w[mask]))
+    
+    def safe_median(x):
+        valid = x[~np.isnan(x)]
+        return float(np.median(valid)) if valid.size else np.nan
+    
+    def safe_mean(x):
+        valid = x[~np.isnan(x)]
+        return float(np.mean(valid)) if valid.size else np.nan
+    
+    summary = {
+        'num_series': len(all_metrics_list),
+        'total_points': total_points,
+        'forecastability_median': safe_median(fcasts),
+        'forecastability_mean': safe_mean(fcasts),
+        'forecastability_weighted': wavg(fcasts, lengths),
+        'cv_median': safe_median(cvs),
+        'cv_mean': safe_mean(cvs),
+        'missing_ratio_median': safe_median(missings),
+        'missing_ratio_mean': safe_mean(missings),
+        'eff_length_median': safe_median(lengths),
+        'eff_length_mean': safe_mean(lengths),
+        'season_strength_median': safe_median(seasons),
+        'season_strength_mean': safe_mean(seasons),
+        'trend_strength_median': safe_median(trends),
+        'trend_strength_mean': safe_mean(trends),
+    }
+    
+    if compute_hurst:
+        summary['hurst_median'] = safe_median(hursts)
+        summary['hurst_mean'] = safe_mean(hursts)
+    
+    if compute_adf and adfs.size > 0:
+        summary['adf_stat_median'] = safe_median(adfs)
+        summary['adf_stat_mean'] = safe_mean(adfs)
+    
+    return summary
+
+
 def analyze_single_file(
     file_path: Path,
     value_col: str = 'value',
@@ -295,6 +361,7 @@ def analyze_single_file(
     
     # Aggregate by item_id and index
     # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
+    logger.info("Aggregating metrics by item_id and index...")
     items_dict = {}
     indices_dict = {}
     
@@ -334,17 +401,15 @@ def analyze_single_file(
                 index_summaries[index][f'{key}_mean'] = float(np.mean(values))
                 index_summaries[index][f'{key}_median'] = float(np.median(values))
     
+    # Build summary from already-computed metrics (avoid re-evaluating all series)
+    logger.info("Computing dataset summary from pre-computed metrics...")
+    summary = _compute_summary_from_metrics(all_metrics_list, compute_adf=compute_adf, compute_hurst=compute_hurst)
+    
     # Build comprehensive results
     # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
     unique_item_ids = set(entry['item_id'] for entry in all_series_metrics)
     results = {
-        'summary': evaluate_dataset(
-            series_list,
-            period=period,
-            compute_adf=compute_adf,
-            compute_hurst=compute_hurst,
-            verbose=False
-        ),
+        'summary': summary,
         'totals': totals,
         'by_index': index_summaries,
         'by_item': items_dict,  # Flat structure: key = "{item_id}_{index}", value = metrics dict
@@ -511,25 +576,6 @@ def analyze_multiple_files(
             
             logger.info(f"Completed sequential evaluation of {len(all_series_metrics)} series")
         
-        # Aggregate results
-        items_dict = {}
-        indices_dict = {}
-        
-        for entry in all_series_metrics:
-            item_id = entry['item_id']
-            index = entry['index']
-            metrics_dict = entry['metrics']
-            
-            # Create flat key: "{item_id}_{index}"
-            key = f"{item_id}_{index}"
-            items_dict[key] = metrics_dict
-            
-            # Group by index for summary statistics
-            if index not in indices_dict:
-                indices_dict[index] = []
-            indices_dict[index].append(metrics_dict)
-        
-        logger.info(f"Completed evaluation of {len(all_series_metrics)} series")
         logger.info(f"Aggregating metrics by item_id and index...")
         
         # Aggregate by item_id and index
@@ -573,17 +619,15 @@ def analyze_multiple_files(
                     index_summaries[index][f'{key}_mean'] = float(np.mean(values))
                     index_summaries[index][f'{key}_median'] = float(np.median(values))
         
+        # Build summary from already-computed metrics (avoid re-evaluating all series)
+        logger.info("Computing dataset summary from pre-computed metrics...")
+        summary = _compute_summary_from_metrics(all_metrics_list, compute_adf=compute_adf, compute_hurst=compute_hurst)
+        
         # Build comprehensive results
         # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
         unique_item_ids = set(entry['item_id'] for entry in all_series_metrics)
         results = {
-            'summary': evaluate_dataset(
-                series_list,
-                period=period,
-                compute_adf=compute_adf,
-                compute_hurst=compute_hurst,
-                verbose=False
-            ),
+            'summary': summary,
             'totals': totals,
             'by_index': index_summaries,
             'by_item': items_dict,  # Flat structure: key = "{item_id}_{index}", value = metrics dict
