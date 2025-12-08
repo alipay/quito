@@ -223,9 +223,10 @@ def analyze_single_file(
     compute_adf: bool = False,
     compute_hurst: bool = True,
     use_all_indices: bool = False,
-    output_path: Optional[Path] = None
+    output_path: Optional[Path] = None,
+    num_workers: int = 8
 ):
-    """Analyze quality of a single parquet file."""
+    """Analyze quality of a single parquet file with optional multiprocessing."""
     logger.info("="*80)
     logger.info(f"Analyzing: {file_path.name}")
     logger.info("="*80)
@@ -251,19 +252,46 @@ def analyze_single_file(
         return None
     
     # Evaluate all series
-    all_series_metrics = []
-    for series, meta in zip(series_list, metadata_list):
-        metrics = evaluate_series(
-            series,
-            period=period,
-            compute_adf=compute_adf,
-            compute_hurst=compute_hurst
-        )
-        all_series_metrics.append({
-            'item_id': meta['item_id'],
-            'index': meta['index'],
-            'metrics': metrics.to_dict()
-        })
+    total_series = len(series_list)
+    actual_workers = num_workers if num_workers > 0 else mp.cpu_count()
+    
+    if actual_workers > 1 and total_series > 10:
+        # Multiprocessing mode
+        logger.info(f"Evaluating {total_series} series using {actual_workers} workers...")
+        
+        worker_args = [
+            (series, meta, period, compute_adf, compute_hurst)
+            for series, meta in zip(series_list, metadata_list)
+        ]
+        
+        all_series_metrics = []
+        chunk_size = max(1, total_series // (actual_workers * 4))
+        
+        with mp.Pool(processes=actual_workers) as pool:
+            for i, result in enumerate(pool.imap(_evaluate_series_worker, worker_args, chunksize=chunk_size), 1):
+                all_series_metrics.append(result)
+                if i % 500 == 0 or i == total_series:
+                    logger.info(f"  Evaluated {i}/{total_series} series ({100*i/total_series:.1f}%)")
+        
+        logger.info(f"Completed parallel evaluation of {len(all_series_metrics)} series")
+    else:
+        # Sequential mode
+        logger.info(f"Evaluating {total_series} series sequentially...")
+        all_series_metrics = []
+        for idx, (series, meta) in enumerate(zip(series_list, metadata_list), 1):
+            if idx % 100 == 0 or idx == total_series:
+                logger.info(f"  Evaluating series {idx}/{total_series}")
+            metrics = evaluate_series(
+                series,
+                period=period,
+                compute_adf=compute_adf,
+                compute_hurst=compute_hurst
+            )
+            all_series_metrics.append({
+                'item_id': meta['item_id'],
+                'index': meta['index'],
+                'metrics': metrics.to_dict()
+            })
     
     # Aggregate by item_id and index
     # Key format: "{item_id}_{index}" e.g. "0_ind_1", "123_ind_3"
@@ -790,7 +818,8 @@ Examples:
             compute_adf=args.compute_adf,
             compute_hurst=compute_hurst,
             use_all_indices=use_all_indices,
-            output_path=output_path
+            output_path=output_path,
+            num_workers=args.num_workers
         )
     else:
         # Multiple files analysis
