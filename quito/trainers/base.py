@@ -693,7 +693,7 @@ class BaseTrainer(ABC):
         # Only sync if distributed is initialized and world size > 1
         if dist.is_initialized() and self.world_size > 1:
             dist.all_reduce(metric, op=dist.ReduceOp.SUM)
-        metric = metric / self.world_size
+            metric = metric / self.world_size
         
         metric = metric.item()
         

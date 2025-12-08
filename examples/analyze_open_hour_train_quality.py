@@ -639,7 +639,7 @@ Examples:
     parser.add_argument(
         '--data_dir',
         type=str,
-        default='/ossfs/workspace/quito_github/SCALA-1B/examples/datasets/parquet_data/open_hour_train/',
+        default='examples/datasets/parquet_data/open_hour_train',
         help='Directory containing parquet files (default: examples/datasets/parquet_data/open_hour_train)'
     )
     
