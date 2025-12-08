@@ -217,6 +217,11 @@ def _compute_summary_from_metrics(all_metrics_list: List[Dict], compute_adf: boo
     """
     Compute dataset summary statistics from already-computed per-series metrics.
     This avoids re-evaluating all series when building the summary.
+    
+    Returns a dict compatible with print_dataset_report(), containing:
+    - total_time_points, num_series, avg_series_length
+    - weighted_metrics: length-weighted averages
+    - unweighted_metrics: simple means
     """
     if not all_metrics_list:
         return {}
@@ -231,9 +236,7 @@ def _compute_summary_from_metrics(all_metrics_list: List[Dict], compute_adf: boo
     hursts = np.array([m.get('hurst', np.nan) for m in all_metrics_list], dtype=float)
     adfs = np.array([m.get('adf_stat', np.nan) for m in all_metrics_list], dtype=float) if compute_adf else np.array([])
     
-    total_points = float(np.nansum(lengths)) if lengths.size else 1.0
-    if total_points <= 0:
-        total_points = 1.0
+    total_points = int(np.nansum(lengths)) if lengths.size else 0
     
     def wavg(x, w):
         """Weighted average ignoring NaNs."""
@@ -250,12 +253,42 @@ def _compute_summary_from_metrics(all_metrics_list: List[Dict], compute_adf: boo
         valid = x[~np.isnan(x)]
         return float(np.mean(valid)) if valid.size else np.nan
     
+    # Build weighted_metrics (length-weighted averages) - format expected by print_dataset_report
+    weighted_metrics = {
+        'forecastability': wavg(fcasts, lengths),
+        'cv': wavg(cvs, lengths),
+        'missing_ratio': wavg(missings, lengths),
+        'season_strength': wavg(seasons, lengths),
+        'trend_strength': wavg(trends, lengths),
+    }
+    
+    # Build unweighted_metrics (simple means)
+    unweighted_metrics = {
+        'forecastability': safe_mean(fcasts),
+        'cv': safe_mean(cvs),
+        'missing_ratio': safe_mean(missings),
+        'season_strength': safe_mean(seasons),
+        'trend_strength': safe_mean(trends),
+    }
+    
+    if compute_hurst:
+        weighted_metrics['hurst'] = wavg(hursts, lengths)
+        unweighted_metrics['hurst'] = safe_mean(hursts)
+    
+    if compute_adf and adfs.size > 0:
+        weighted_metrics['adf_stat'] = wavg(adfs, lengths)
+        unweighted_metrics['adf_stat'] = safe_mean(adfs)
+    
+    # Build summary in format expected by print_dataset_report
     summary = {
         'num_series': len(all_metrics_list),
-        'total_points': total_points,
+        'total_time_points': total_points,
+        'avg_series_length': float(np.nanmean(lengths)) if lengths.size else float('nan'),
+        'weighted_metrics': weighted_metrics,
+        'unweighted_metrics': unweighted_metrics,
+        # Also keep detailed stats for JSON output
         'forecastability_median': safe_median(fcasts),
         'forecastability_mean': safe_mean(fcasts),
-        'forecastability_weighted': wavg(fcasts, lengths),
         'cv_median': safe_median(cvs),
         'cv_mean': safe_mean(cvs),
         'missing_ratio_median': safe_median(missings),
