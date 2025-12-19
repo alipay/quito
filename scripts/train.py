@@ -137,41 +137,41 @@ def main(config=None):
             model = model.to(device)
             logging.info("Using CPU (no GPU detected)")
 
-    # Set ranks for trainer based on device availability
-    if torch.cuda.is_available():
-        trainer_local_rank = local_rank
-        trainer_global_rank = rank
-        trainer_world_size = world_size
-    else:
-        # CPU mode: set all to -1
-        trainer_local_rank = -1
-        trainer_global_rank = -1
-        trainer_world_size = -1
-    
-    # Create trainer
-    trainer = AutoTrainer.from_config(
-        model=model,
-        train_dataset=train_dataset,
-        eval_dataset=valid_dataset,
-        config=training_config,
-        local_rank=trainer_local_rank,
-        global_rank=trainer_global_rank,
-        world_size=trainer_world_size
-    )
-    logging.info(f"Trainer {trainer.__class__.__name__} created ...")
-    
-    try:
-        results = trainer.train()
+        # Set ranks for trainer based on device availability
+        if torch.cuda.is_available():
+            trainer_local_rank = local_rank
+            trainer_global_rank = rank
+            trainer_world_size = world_size
+        else:
+            # CPU mode: set all to -1
+            trainer_local_rank = -1
+            trainer_global_rank = -1
+            trainer_world_size = -1
 
-        logging.info("=" * 80)
-        logging.info("Training completed successfully!")
-        logging.info('The results are: \n')
-        logging.info(results)
-    
-    except Exception as e:
-        logging.error(f"Training failed with error: {e}, perform cleaning ...")
-        raise
-        
+        # Create trainer
+        trainer = AutoTrainer.from_config(
+            model=model,
+            train_dataset=train_dataset,
+            eval_dataset=valid_dataset,
+            config=training_config,
+            local_rank=trainer_local_rank,
+            global_rank=trainer_global_rank,
+            world_size=trainer_world_size
+        )
+        logging.info(f"Trainer {trainer.__class__.__name__} created ...")
+
+        try:
+            results = trainer.train()
+
+            logging.info("=" * 80)
+            logging.info("Training completed successfully!")
+            logging.info('The results are: \n')
+            logging.info(results)
+
+        except Exception as e:
+            logging.error(f"Training failed with error: {e}, perform cleaning ...")
+            raise
+
 
 if __name__ == "__main__":
     main()
