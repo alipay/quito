@@ -98,6 +98,13 @@ class BaseTrainer(ABC):
 
         # progress bar
         self.current_progress_bar = None
+        self.current_eval_progress_bar = None
+        self.progress_bar_metrics = {
+            "valid_loss_step": None,
+            "valid_loss_epoch": None,
+            "train_loss_step": None,
+            "train_loss_epoch": None
+            }
 
         # validate
         self.validate()
@@ -413,7 +420,7 @@ class BaseTrainer(ABC):
             self.current_progress_bar.close()
 
         # config progress bar only on rank 0
-        if self.global_rank <= 0:
+        if self.global_rank == 0:
             self.current_progress_bar = tqdm(
                 self.train_dataloader,
                 desc=f"Epoch {self.epoch + 1}/{self.config.num_epochs}",
@@ -580,15 +587,15 @@ class BaseTrainer(ABC):
         self.model.eval()
         total_loss_dict = {}
         num_batches = 0
-        if self.current_progress_bar is not None:
-            self.current_progress_bar.close()
+        if self.current_eval_progress_bar is not None:
+            self.current_eval_progress_bar.close()
 
-        if self.global_rank <= 0:
-            self.current_progress_bar = tqdm(self.eval_dataloader, desc="Evaluating", leave=False)
+        if self.global_rank == 0:
+            self.current_eval_progress_bar = tqdm(self.eval_dataloader, desc="Evaluating", leave=False)
         else:
-            self.current_progress_bar = None
+            self.current_eval_progress_bar = None
 
-        dataloader = self.current_progress_bar if self.current_progress_bar else self.eval_dataloader
+        dataloader = self.current_eval_progress_bar if self.current_eval_progress_bar else self.eval_dataloader
         for idx, batch in enumerate(dataloader):
             loss_dict, predictions = self._evaluation_step(batch)
             for k, v in loss_dict.items():
@@ -614,8 +621,8 @@ class BaseTrainer(ABC):
 
             total_loss_dict[k] = v
 
-        if self.current_progress_bar is not None:
-            self.current_progress_bar.close()
+        if self.current_eval_progress_bar is not None:
+            self.current_eval_progress_bar.close()
 
         return total_loss_dict
 
@@ -641,7 +648,7 @@ class BaseTrainer(ABC):
             valid_loss = total_loss_dict[self.config.es_metric]
             # log to progress bar and tensorboard
             self._log_metrics(self.global_step, log_eval_dict)
-            self._log_to_progress_bar({"valid_loss_step": valid_loss})
+            self.progress_bar_metrics.update({"valid_loss_step": valid_loss})
         else:
             valid_loss = None
 
@@ -650,11 +657,10 @@ class BaseTrainer(ABC):
             self.save_checkpoint(valid_loss=valid_loss)
 
         # log to progress bar
-        self._log_to_progress_bar({"train_loss_step": loss_val})
-
+        self.progress_bar_metrics.update({"train_loss_step": loss_val})
+        self._log_to_progress_bar(self.progress_bar_metrics)
 
     def on_epoch_end(self, loss_val):
-        # Log training step
         if self._should_log_train(location='epoch'):
             if self.config.sync_loss:
                 # we sync loss step at each logging step
@@ -693,7 +699,7 @@ class BaseTrainer(ABC):
 
             # log to progress bar and tensorboard
             self._log_metrics(self.epoch, log_eval_dict)
-            self._log_to_progress_bar({"valid_loss_epoch": valid_loss})
+            self.progress_bar_metrics.update({"valid_loss_epoch": valid_loss})
         else:
             valid_loss = None
 
@@ -701,8 +707,8 @@ class BaseTrainer(ABC):
         if self._should_save(location='epoch'):
             self.save_checkpoint(valid_loss=valid_loss)
 
-        self._log_to_progress_bar({"train_loss_epoch": loss_val})
-
+        self.progress_bar_metrics.update({"train_loss_epoch": loss_val})
+        self._log_to_progress_bar(self.progress_bar_metrics)
 
     def _sync_metric(self, metric: Union[float, torch.Tensor]) -> float:
         """
