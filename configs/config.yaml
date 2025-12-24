@@ -8,76 +8,52 @@ data:
     seq_len: 512  # Input sequence length
     decoder_label_len: 48  # Label length for decoder start
     forecast_horizon: 96  # Prediction length
-    features: "M"  # M: multivariate->multivariate, S: univariate->univariate, MS: multivariate->univariate
+    features: "M"  # M: multivariate->multivariate, S: univariate->univariate
     normalize: True
+    global_test_point: '2023-09-01 00:00:00'
   datasets:
-    TEST_DATA: 
-      file_name: "/ossfs/workspace/ts_data_parquet/test_data.parquet"
+    TEST_DATA_MIN:
+      file_name: "/ossfs/workspace/quito_github_v2/quito-10b-main/examples/datasets/cluster_data/open_min_data.parquet"
       train_ratio: 0.7
       valid_ratio: 0.2
       test_ratio: 0.1
+      is_pretrain: False
+      freq: 'M'
+      ds_cls: 'TimeSeriesDataset'
+      ds_kwargs: {}
+      target: 'ind_1'
+
+    TEST_DATA_HOUR:
+      file_name: "/ossfs/workspace/quito_github_v2/quito-10b-main/examples/datasets/cluster_data/open_hour_data.parquet"
+      train_ratio: 0.7
+      valid_ratio: 0.2
+      test_ratio: 0.1
+      is_pretrain: False
+      freq: 'H'
+      ds_cls: 'TimeSeriesDataset'
+      ds_kwargs: {}
+      target: 'ind_1'
+
+    TEST_DATA_PRETRAIN:
+      file_name: "/ossfs/workspace/ts_data_parquet/test_data.parquet"
+      train_ratio: 0.7
+      valid_ratio: 0.05
+      test_ratio: 0.25
       is_pretrain: True
       freq: 'M'
       ds_cls: 'TimeSeriesDataset'
       ds_kwargs: {}
       target: 'ind_1'
-    # MIN_P1: 
-      # file_name: "train_min_p1.parquet"
-      # train_ratio: 0.8
-      # valid_ratio: 0.1
-      # test_ratio: 0.1
-      # is_pretrain: True
-      # freq: 'M'
-      # ds_cls: 'TimeSeriesDataset'
-      # ds_kwargs: {}
-      # target: 'ind_1'
-      # anomaly_remove_method: null
-      # na_impute_method: 'linear'
-    # MIN_P2: 
-    #   file_name: "train_min_p2.parquet"
-    #   train_ratio: 0.8
-    #   valid_ratio: 0.1
-    #   test_ratio: 0.1
-    #   is_pretrain: True
-    #   freq: 'M'
-    #   ds_cls: 'TimeSeriesDataset'
-    #   ds_kwargs: {}
-    #   target: 'ind_1'
-      # anomaly_remove_method: 'stl'
-      # na_impute_method: 'linear'
-    # MIN_P3: 
-    #   file_name: "train_min_p3.parquet"
-    #   train_ratio: 0.8
-    #   valid_ratio: 0.1
-    #   test_ratio: 0.1
-    #   is_pretrain: True
-    #   freq: 'M'
-    #   ds_cls: 'TimeSeriesDataset'
-    #   ds_kwargs: {}
-    #   target: 'ind_1'
-    #   anomaly_remove_method: 'stl'
-    #   na_impute_method: 'linear'
-    # MIN_P4: 
-    #   file_name: "train_min_p4.parquet"
-    #   train_ratio: 0.8
-    #   valid_ratio: 0.1
-    #   test_ratio: 0.1
-    #   is_pretrain: False
-    #   freq: 'M'
-    #   ds_cls: 'TimeSeriesDataset'
-    #   ds_kwargs: {}
-    #   target: 'ind_1'
-    #   anomaly_remove_method: 'stl'
-    #   na_impute_method: 'linear'
+
 
 # Model Configuration
 model:
-  # model_name: 'dlinear'
-  model_name: "tstransformer"  # Model architecture: pyraformer, informer, autoformer, patchtst
-  time_pe_type: null
-  feature_pe_type: null
-  d_model: 512
-  layers: ['feature_full', 'time_full', 'feature_full', 'time_full']
+  model_name: 'patchtst'
+  # model_name: "tstransformer"  # Model architecture: pyraformer, informer, autoformer, patchtst
+  # time_pe_type: null
+  # feature_pe_type: null
+  # d_model: 512
+  # layers: ['feature_full', 'time_full', 'feature_full', 'time_full']
   # d_model: 16  # Model dimension
   # n_heads: 8  # Number of attention heads
   # d_ff: 128  # Dimension of feedforward network
@@ -124,7 +100,7 @@ checkpointing:
   save_last_k: 10
   save_steps: null  # Save checkpoint every N steps, None if dont want to save at step
   save_epochs: 1 # Save checkpoint every N epochs, None if dont want to save at epoch
-  
+
 
 # Logging Configuration
 logging:
@@ -148,7 +124,7 @@ evaluation:
   save_eval_results_top_k: 10 # wheather to save the last k eval step results, the inputs, predictions and labels during evaluation
 # Resume Training
 resume:
-  checkpoint_path: null  # Path to checkpoint to resume from (if null, start from scratch)
+  checkpoint_path: '/ossfs/workspace/quito_github_v2/quito-10b-main/outputs/ver_49/checkpoints/best_epoch=21_step=1122_MSE=0.394.ckpt'  # Path to checkpoint to resume from (if null, start from scratch)
 
 distributed:
   ddp_find_unused_parameters: True
