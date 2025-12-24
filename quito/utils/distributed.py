@@ -13,7 +13,7 @@ from quito.utils.common import make_output_dir
 
 class DistributedGroupManager:
     """Context manager for distributed training. Skips DDP if single process or CPU."""
-    
+
     def __init__(self, backend, rank, local_rank, world_size):
         self.backend = backend
         self.rank = rank
@@ -26,15 +26,15 @@ class DistributedGroupManager:
         # 1. Multiple processes (world_size > 1)
         # 2. GPU is available
         # 3. Distributed environment variables are set
-        if (self.world_size > 1 and 
-            torch.cuda.is_available() and 
-            os.environ.get("MASTER_ADDR") is not None):
+        if (self.world_size > 1 and
+                torch.cuda.is_available() and
+                os.environ.get("MASTER_ADDR") is not None):
             self.use_distributed = True
             if torch.cuda.is_available():
                 torch.cuda.set_device(self.local_rank)
             dist.init_process_group(
-                backend=self.backend, 
-                rank=self.rank, 
+                backend=self.backend,
+                rank=self.rank,
                 world_size=self.world_size
             )
             logging.info(f"Initialized distributed training: rank={self.rank}, world_size={self.world_size}")
@@ -44,7 +44,7 @@ class DistributedGroupManager:
                 logging.info("Running on CPU (no GPU detected)")
             else:
                 logging.info(f"Running on single GPU (rank={self.rank}, world_size={self.world_size})")
-        
+
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -65,7 +65,7 @@ def log_rank_zero(message):
 def setup_logging(distributed_rank, save_dir=None, filename="log.txt"):
     """
     Set up logging only for the master (rank 0) process.
-    
+
     Args:
         distributed_rank (int): The rank of the current process.
         save_dir (str, optional): Directory to save the log file.
@@ -78,9 +78,9 @@ def setup_logging(distributed_rank, save_dir=None, filename="log.txt"):
         return
 
     # Below configuration only applies to rank 0
-    logger = logging.getLogger() # Gets the root logger
-    logger.setLevel(logging.DEBUG)
-    
+    logger = logging.getLogger()  # Gets the root logger
+    logger.setLevel(logging.INFO)
+
     # Check if handlers already exist to avoid duplicate logs
     if logger.hasHandlers():
         logger.handlers.clear()
@@ -90,7 +90,7 @@ def setup_logging(distributed_rank, save_dir=None, filename="log.txt"):
 
     # Console Handler (prints to stdout)
     ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(logging.INFO)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
@@ -99,10 +99,11 @@ def setup_logging(distributed_rank, save_dir=None, filename="log.txt"):
         os.makedirs(save_dir, exist_ok=True)
         log_file = os.path.join(save_dir, filename)
         fh = logging.FileHandler(log_file, mode='w')
-        fh.setLevel(logging.DEBUG)
+        fh.setLevel(logging.INFO)
         fh.setFormatter(formatter)
         logger.addHandler(fh)
-        
+
+
 def setup(config_path_or_obj: Union[str, DictConfig], mode):
     """
     Set up the environment with configuration from a YAML file or DictConfig object.
@@ -112,7 +113,7 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
     rank = int(os.environ.get("RANK", "0"))
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    
+
     # If no distributed env vars, force single process
     if os.environ.get("MASTER_ADDR") is None:
         if torch.cuda.is_available():
@@ -123,7 +124,7 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
             rank = -1
             world_size = -1
             local_rank = -1
-    
+
     if isinstance(config_path_or_obj, str):
         config = OmegaConf.load(config_path_or_obj)
         config_source = config_path_or_obj
@@ -136,36 +137,59 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
         output_dir = make_output_dir(config.logging.output_dir)
     else:
         output_dir = None
-    
+
     # config logging
     setup_logging(rank, save_dir=output_dir)
-    
+
     if output_dir:
-        config.logging.output_dir = str(output_dir) # Update config with actual path
-    
+        config.logging.output_dir = str(output_dir)  # Update config with actual path
+
     if rank in [0, -1]:
         # Load configuration from YAML file
         logging.info(f"Load configuration from {config_source}")
         # Create output directory
-        output_dir = Path(output_dir)    
+        output_dir = Path(output_dir)
         # Save final config to output directory
         final_config_path = output_dir / "config.yaml"
         OmegaConf.save(config, final_config_path)
         logging.info(f"Saved {mode} configuration to {final_config_path}")
-        
+
         # Log configuration
         logging.info("=" * 80)
         logging.info(f"{mode} Configuration:")
         logging.info(OmegaConf.to_yaml(config))
         logging.info("=" * 80)
-        
+
         # Log device info
         if torch.cuda.is_available():
             logging.info(f"GPU available: {torch.cuda.get_device_name(0)}")
         else:
             logging.info("Running on CPU (no GPU detected)")
-    
+
     return rank, world_size, local_rank, config, output_dir
+
+
+def setup_evaluation(config_path_or_obj: Union[str, DictConfig]):
+    if isinstance(config_path_or_obj, str):
+        config = OmegaConf.load(config_path_or_obj)
+        config_source = config_path_or_obj
+    else:
+        config = config_path_or_obj
+        config_source = "config object"
+
+    output_dir = make_output_dir(os.path.join(config.logging.output_dir, 'evaluation'))
+    config.logging.output_dir = str(output_dir)  # Update config with actual path
+    setup_logging(0, save_dir=output_dir)
+    # Load configuration from YAML file
+    logging.info(f"Load configuration from {config_source}")
+    # Create output directory
+    output_dir = Path(output_dir)
+    # Save final config to output directory
+    final_config_path = output_dir / "config.yaml"
+    OmegaConf.save(config, final_config_path)
+    logging.info(f"Saved configuration to {final_config_path}")
+
+    return config, output_dir
 
 
 def rank_zero_only(fn: Callable) -> Callable:

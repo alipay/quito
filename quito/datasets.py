@@ -21,11 +21,13 @@ def load_datasets(
     data_config: DataConfig,
     task: TaskType,
     mode: ModeType,
+    cleanup: bool = True,
+    concat: bool = True,
     **kwargs
 ) -> List[Dataset]:
     """
     Load time series datasets from parquets
-    
+
     Returns:
         ConcatedDataset
     """
@@ -44,41 +46,46 @@ def load_datasets(
                 features=Features(data_config.features),
                 data_dir=data_config.data_dir,
                 normalize=data_config.normalize,
+                global_test_point=data_config.global_test_point,
                 ds_config=ds_config,
                 mode=mode,
                 name=name,
+                cleanup=cleanup,
                 **ds_config.ds_kwargs,
             )
             logging.info(f'Loading {name} for {task} using {ds_cls.__name__} ...')
-            ds_lst.append(ds)    
-    
+            ds_lst.append(ds)
+
     if not ds_lst:
         return None
-    
-    ds = ConcatDataset(ds_lst)
-    
-    logging.info(f"{task} {mode} dataset size: {len(ds)} samples")
-    
-    return ds
-    
+
+    if concat:
+        # return concatDataset
+        ds = ConcatDataset(ds_lst)
+        logging.info(f"{task} {mode} dataset size: {len(ds)} samples")
+        return ds
+    else:
+        # return list of dataset
+        return ds_lst
+
 
 def get_dataset(data_config: DataConfig, task: TaskType = TaskType.FINE_TUNE) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
     """
     Get train, validation, and test datasets.
-    
+
     Args:
         data_config: Data configuration
         task: Task type (default: FINE_TUNE)
-        
+
     Returns:
         Tuple of (train_ds, val_ds, test_ds)
     """
     train_ds = load_datasets(data_config, task, ModeType.TRAIN)
     val_ds = load_datasets(data_config, task, ModeType.VALID)
     test_ds = load_datasets(data_config, task, ModeType.TEST)
-    
+
     return train_ds, val_ds, test_ds
-    
+
 
 def load_dataloader(ds: ConcatDataset, data_config: DataConfig):
     dl = TimeSeriesDataLoader(
@@ -88,18 +95,18 @@ def load_dataloader(ds: ConcatDataset, data_config: DataConfig):
         num_workers=data_config.num_workers,
         pin_memory=data_config.pin_memory,
     )
-    
+
     return dl
-    
+
 @register_to_mapping(DATASET_MAPPING)
 class TimeSeriesDataset(Dataset):
     """
     Time series dataset for forecasting tasks.
-    
+
     This dataset handles sliding window creation, normalization, and
     returns sequences in the format expected by forecasting models.
     """
-    
+
     def __init__(
         self,
         data_dir: str,
@@ -111,11 +118,13 @@ class TimeSeriesDataset(Dataset):
         mode: ModeType,
         normalize: bool = True,
         name: str = None,
+        cleanup: str = True,
+        global_test_point: str = None,
         **kwargs
     ):
         """
         Initialize the time series dataset.
-        
+
         Args:
             ds_config: Dataset configuration object
             mode: Mode type (train, valid, test)
@@ -138,7 +147,11 @@ class TimeSeriesDataset(Dataset):
         self.target = ds_config.target
         self.name = name
         self.mode = mode
-        
+        self.cleanup = cleanup # used to remove self._df to save memory
+        self.ids = ds_config.ids # user ids that will be used to select data at the initialization point
+        self.global_test_point = global_test_point # the global splitting point for all datasets
+
+        self._df = None
         self.data = None
         self.date_col = None
         self.time_features = None
@@ -148,31 +161,32 @@ class TimeSeriesDataset(Dataset):
         self.train_size = None
         self.valid_size = None
         self.test_size = None
-        
-        self._init_data()
-        
+        self.id_mask = None
+
+        self.init_data()
+
     def _process_time_features(self, ts_series: pd.Series) -> np.ndarray:
         """Extract time features from datetime."""
         features = []
-        
+
         if self.ds_config.freq == Freq.M:
             # Minute of hour (normalized to [0, 1])
             features.append(ts_series.dt.minute / 59.0)
-        
+
         # Hour of day (normalized to [0, 1])
         features.append(ts_series.dt.hour / 23.0)
-        
+
         # Day of week (normalized to [0, 1])
         features.append(ts_series.dt.dayofweek / 6.0)
-        
+
         # Day of month (normalized to [0, 1])
         features.append(ts_series.dt.day / 31.0)
-        
+
         # Month of year (normalized to [0, 1])
         features.append(ts_series.dt.month / 12.0)
-        
+
         return np.stack(features, axis=1).astype(np.float32)
-    
+
     def __len__(self) -> int:
         """Return the number of samples in the dataset."""
         N, L, C = self.data.shape
@@ -182,14 +196,14 @@ class TimeSeriesDataset(Dataset):
         else:
             # Multivariate to univariate
             return (L - self.seq_len - self.forecast_horizon + 1) * N
-    
+
     def _fetch_sample_idx(self, idx):
         """
         Fetch the sample index from the dataset.
-        
+
         Args:
             idx: Index of the sample
-            
+
         Returns:
             Tuple of (i, j) indices
         """
@@ -197,13 +211,13 @@ class TimeSeriesDataset(Dataset):
         len_per_ts = L - self.seq_len - self.forecast_horizon + 1
         i = idx // len_per_ts
         j = idx % len_per_ts
-        
+
         return i, j
-         
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
         Get a sample from the dataset.
-        
+
         Returns:
             Tuple of (seq_x, seq_y, seq_x_mark, seq_y_mark) tensors
             - seq_x: Input sequence [seq_len, n_features]
@@ -219,46 +233,47 @@ class TimeSeriesDataset(Dataset):
         else:
             target_s = 0
             target_e = 1
-            
+
         # Input sequence
         s_begin = j
         s_end = s_begin + self.seq_len
         y_begin = s_end - self.decoder_label_len
-        y_end = s_end + self.forecast_horizon 
+        y_end = s_end + self.forecast_horizon
 
         seq_x = self.data[i, s_begin:s_end, :]
         seq_y = self.data[i, y_begin:y_end, target_s:target_e]
         seq_x_mark = self.time_features[s_begin:s_end, :]
         seq_y_mark = self.time_features[y_begin:y_end, :]
-        
+
         # Convert to torch tensors
         seq_x = torch.from_numpy(seq_x).float()
         seq_y = torch.from_numpy(seq_y).float()
         seq_x_mark = torch.from_numpy(seq_x_mark).float()
         seq_y_mark = torch.from_numpy(seq_y_mark).float()
-        
+
         assert seq_x.ndim == 2
         assert seq_y.ndim == 2
         assert seq_x_mark.ndim == 2
         assert seq_y_mark.ndim == 2
 
         out_dict = {
-            'x': seq_x, 
+            'x': seq_x,
             'y': seq_y,
             'x_mark': seq_x_mark,
             'y_mark': seq_y_mark
             }
-        
+
         return out_dict
-    
+
     def inverse_transform(self, data: np.ndarray) -> np.ndarray:
         """Inverse transform scaled data back to original scale."""
         if self.normalize:
             return data * self.std + self.mean
-        
+
         return data
-    
-    def _init_data(self):
+
+    def load_data(self):
+        print(self.global_test_point)
         # Process dataframe - use absolute path
         file_path = (self.data_dir / self.ds_config.file_name).resolve()
         df = pd.read_parquet(str(file_path))
@@ -269,44 +284,71 @@ class TimeSeriesDataset(Dataset):
                 break
         else:
             raise ValueError("No date column found in dataset")
-        
+
+        self._df = df
+
+    def process_raw_df(self):
+        if self._df is None:
+            raise ValueError('dataframe is not loaded !!!')
+
+        df = self._df.copy() # do not modify the original df
         # datetime col to pd.datetime
         df[self.date_col] = pd.to_datetime(df[self.date_col])
         # Move target to first place if exists
         if self.target:
             columns = [self.target] + [c for c in df.columns if c != self.target]
             df = df[columns]
-        
+
         # Extract numeric features
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         # Remove item_id if present (used for grouping, not features)
         if 'item_id' in numeric_cols:
             # make the data 3D of shape (n_item_id, n_rows, n_cols), assume each item_id has same length
+            if self.ids: # getting dataframe with only ids
+                df = df[df['item_id'].isin(self.ids)]
+
             df_sorted = df.sort_values(['item_id', self.date_col])
             unique_ids = df_sorted['item_id'].unique()
+            single_id_df = df_sorted[df_sorted['item_id'] == unique_ids[0]].reset_index(drop=True)
             n_ids = len(unique_ids)
-            n_rows_per_id = df_sorted.groupby('item_id').size().iloc[0]
+            n_rows_per_id = len(single_id_df)
             n_cols = len(numeric_cols) - 1
             numeric_cols.remove('item_id')
+            id_mask = df_sorted['item_id'].values
         else:
             df_sorted = df.sort_values([self.date_col])
+            single_id_df = df_sorted.reset_index(drop=True)
             n_ids = 1
-            n_rows_per_id = len(df_sorted)
+            n_rows_per_id = len(single_id_df)
             n_cols = len(numeric_cols)
             unique_ids = None
-        
+            id_mask = None
+
+        if 'cluster' in numeric_cols:
+            n_cols = n_cols - 1
+            numeric_cols.remove('cluster')
+
+        if self.global_test_point is not None:
+            # if global splitting point
+            train_valid_size = single_id_df[single_id_df[self.date_col] == self.global_test_point].index.item()
+            train_size, valid_size, _ = self.ds_config.split(train_valid_size, test=False)
+            test_size = n_rows_per_id - train_valid_size
+        else:
+            train_size, valid_size, test_size = self.ds_config.split(n_rows_per_id)
+
         data = df_sorted[numeric_cols].values
         data = data.reshape(n_ids, n_rows_per_id, n_cols) # (N_ids, n_rows, n_cols)
+        if id_mask is not None:
+            id_mask = id_mask.reshape(n_ids, n_rows_per_id, 1) # (N_ids, n_rows, 1), this is a mask for the ids
+            id_mask = np.repeat(id_mask, n_cols, axis=-1)
+
         ts_series = df_sorted[self.date_col] # (n_rows, 1)
-        
-        # calulate split and scale data
-        train_size, valid_size, test_size = self.ds_config.split(data.shape[1])
         mean = np.mean(data[:, :train_size, :], axis=1, keepdims=True)
         std = np.std(data[:, :train_size, :], axis=1, keepdims=True) + 1e-8
         data = (data - mean) / std
         # Time features
         time_features = self._process_time_features(ts_series) # L * n_ids, num_time_features
-        time_features = time_features.reshape(n_ids, n_rows_per_id, -1) 
+        time_features = time_features.reshape(n_ids, n_rows_per_id, -1)
         # select the appropriate data according to mode
         if self.mode == ModeType.TRAIN:
             border_s, border_e = 0, train_size
@@ -314,10 +356,12 @@ class TimeSeriesDataset(Dataset):
             border_s, border_e = train_size - self.seq_len, train_size + valid_size
         else:
             border_s, border_e = train_size + valid_size - self.seq_len, train_size + valid_size + test_size
-        
+
         data = data[:, border_s:border_e, :]
         time_features = time_features[0, border_s:border_e, :] # just use the first time features, because other ids have same time features
-        
+        if id_mask is not None:
+            id_mask = id_mask[:, border_s:border_e, :]
+
         # reshape the data according to features
         if self.features == Features.S:
             data = rearrange(data, 'n l c -> (n c) l 1') # (N * C) l 1
@@ -330,22 +374,52 @@ class TimeSeriesDataset(Dataset):
         self.train_size = train_size
         self.valid_size = valid_size
         self.test_size = test_size
+        self.id_mask = id_mask
 
         logging.info(f'Dataset {self.name} loaded successfully')
         logging.info(f'The splits are [{border_s}, {border_e}] for {self.mode}')
+        logging.info(f'The train size is {train_size}, valid_size is {valid_size}, test_size is {test_size}')
+
+    def init_data(self):
+        self.load_data() # load to self._data
+        self.process_raw_df() # process self._data -> self.data
+        if self.cleanup: # perform clearning up on self._df to save memory
+            self._df = None
+
+    def select_user_data(self, user_id):
+        if self.id_mask is None:
+            raise ValueError('id_mask is not available !!!')
+
+        mask = self.id_mask == user_id
+        # original shape
+        original_shape = self.data.shape
+        self.data = self.data[mask].reshape(1, original_shape[1], -1)
+
+    def get_all_ids(self):
+        if self._df is not None and 'item_id' in self._df.columns:
+            return list(self._df['item_id'].unique())
+
+        return None
+
+    def get_item_cluster_mapping(self):
+        if (self._df is not None) and ('item_id' in self._df.columns) and ('cluster' in self._df.columns):
+            mapping = self._df[['item_id', 'cluster']].drop_duplicates()
+            return mapping.set_index('item_id')['cluster'].to_dict()
+
+        return {}
 
     @property
     def description(self):
         return self.ds_config
-    
-    
+
+
 class TimeSeriesDataLoader(DataLoader):
     """
     Wrapper around PyTorch DataLoader for time series data.
-    
+
     This is a convenience class that sets sensible defaults for time series.
     """
-    
+
     def __init__(
         self,
         dataset: ConcatDataset,
@@ -365,4 +439,6 @@ class TimeSeriesDataLoader(DataLoader):
             pin_memory=pin_memory,
             drop_last=drop_last,
             **kwargs
-        ) 
+        )
+
+
