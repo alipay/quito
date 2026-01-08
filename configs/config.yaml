@@ -48,8 +48,9 @@ data:
 
 # Model Configuration
 model:
-  model_name: 'patchtst'
-  # model_name: "tstransformer"  # Model architecture: pyraformer, informer, autoformer, patchtst
+  model_name: 'ChronosV2' # the name of the model class
+  pretrained_model_name_or_path: '/ossfs/workspace/chronos'
+  # model_name: "tstransformer"  # tbe
   # time_pe_type: null
   # feature_pe_type: null
   # d_model: 512
@@ -65,7 +66,7 @@ model:
 
 # Training Configuration
 training:
-  trainer_name: 'trainer' # which trainer class to use ? default to Trainer
+  trainer_name: 'NaiveTrainer' # which trainer class to use ? the name of the trainer class
   num_epochs: 100  # Number of training epochs
   batch_size: 32  # Training batch size per device
   eval_batch_size: 32  # Evaluation batch size (if null, uses batch_size)
@@ -118,13 +119,13 @@ early_stopping:
   greater_is_better: False  # is_greater_better for the metric
 
 evaluation:
-  eval_metrics: ['mse', 'mae']
+  eval_metrics: ['mse', 'mae', 'mase', 'mase_leak', 'mape', 'smape', 'smase']
   eval_steps: 10000  # Evaluate every N steps,  None if dont want to eval at steps
   eval_epochs: 1 # Evaluate every N epochs, None if dont want to eval at epoch
   save_eval_results_top_k: 10 # wheather to save the last k eval step results, the inputs, predictions and labels during evaluation
 # Resume Training
 resume:
-  checkpoint_path: '/ossfs/workspace/quito_github_v2/quito-10b-main/outputs/ver_49/checkpoints/best_epoch=21_step=1122_MSE=0.394.ckpt'  # Path to checkpoint to resume from (if null, start from scratch)
+  checkpoint_path: null  # Path to checkpoint to resume from (if null, start from scratch)
 
 distributed:
   ddp_find_unused_parameters: True

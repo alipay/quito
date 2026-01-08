@@ -52,4 +52,12 @@ pytest-cov>=2.12.0
 black>=22.0.0
 isort>=5.10.0
 flake8>=3.9.0
-mypy>=0.950 
+mypy>=0.950
+
+# chronos support
+chronos-forecasting>=2.0
+# moriai support
+# uni2ts
+# tirex support
+tirex==1.4.0
+# for timesFM support install from github

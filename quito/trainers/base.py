@@ -29,7 +29,8 @@ class BaseTrainer(ABC):
     This class provides common training functionality including training loops,
     evaluation, checkpointing, and logging.
     """
-    
+    REGISTRY: dict = {}
+
     def __init__(
         self,
         model: BaseModel,
@@ -43,7 +44,7 @@ class BaseTrainer(ABC):
     ):
         """
         Initialize the trainer.
-        
+
         Args:
             model: Model to train
             train_dataset: Training dataset
@@ -58,26 +59,26 @@ class BaseTrainer(ABC):
         self.global_rank = global_rank
         self.world_size = world_size
         self.config = config or TrainingConfig()
-        
+
         # Device management: handle CPU (-1) and GPU (>=0) cases
         self.device = f'cuda:{local_rank}' if local_rank >= 0 else 'cpu'
-        
+
         # Initialize components
         self._setup_model()
         self.optimizer = self.get_optimizer()
         self.scheduler = self.get_scheduler()
         self.total_training_steps = 0
-        
+
         # Training state
         self.global_step = 0
         self.epoch = 0
         self.best_metric = float('inf') if not self.config.greater_is_better else float('-inf')
         self.patience_counter = 0
-        
+
         # Mixed precision training
         self.use_amp = self.config.fp16
         self.scaler = GradScaler() if self.use_amp else None
-        
+
         # setup dataloader
         self.train_dataloader = None
         self.eval_dataloader = None
@@ -89,7 +90,7 @@ class BaseTrainer(ABC):
 
         # Set up checkpointing
         self.load_checkpoint()
-        
+
         # Set up eval, checkpoint saving and logging strategies
         self.eval_strategies = []
         self.save_strategies = []
@@ -105,9 +106,13 @@ class BaseTrainer(ABC):
             "train_loss_step": None,
             "train_loss_epoch": None
             }
-
         # validate
         self.validate()
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Register the subclass by its name
+        BaseTrainer.REGISTRY[cls.__name__] = cls
 
     @property
     def actual_model(self):
@@ -749,9 +754,10 @@ class BaseTrainer(ABC):
     def _log_to_progress_bar(self, metrics: Dict[str, float]):
         if self.current_progress_bar is not None:
             self.current_progress_bar.set_postfix(metrics)
-    
+
     @property
     def train_sampler(self):
         if hasattr(self.train_dataloader, 'sampler') and self.train_dataloader.sampler is not None:
             return self.train_dataloader.sampler
         return None
+

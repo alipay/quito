@@ -60,12 +60,10 @@ def load_datasets(
         return None
 
     if concat:
-        # return concatDataset
         ds = ConcatDataset(ds_lst)
         logging.info(f"{task} {mode} dataset size: {len(ds)} samples")
         return ds
     else:
-        # return list of dataset
         return ds_lst
 
 
@@ -147,9 +145,9 @@ class TimeSeriesDataset(Dataset):
         self.target = ds_config.target
         self.name = name
         self.mode = mode
-        self.cleanup = cleanup # used to remove self._df to save memory
-        self.ids = ds_config.ids # user ids that will be used to select data at the initialization point
-        self.global_test_point = global_test_point # the global splitting point for all datasets
+        self.cleanup = cleanup
+        self.ids = ds_config.ids
+        self.global_test_point = global_test_point
 
         self._df = None
         self.data = None
@@ -228,9 +226,11 @@ class TimeSeriesDataset(Dataset):
         i, j = self._fetch_sample_idx(idx)
         # get_target
         if self.features == Features.M:
+            data = self.data
             target_s = 0
             target_e = self.data.shape[-1]
         else:
+            data = rearrange(self.data, 'n l c -> (n c) l 1') # (N * C) l 1
             target_s = 0
             target_e = 1
 
@@ -240,8 +240,8 @@ class TimeSeriesDataset(Dataset):
         y_begin = s_end - self.decoder_label_len
         y_end = s_end + self.forecast_horizon
 
-        seq_x = self.data[i, s_begin:s_end, :]
-        seq_y = self.data[i, y_begin:y_end, target_s:target_e]
+        seq_x = data[i, s_begin:s_end, :]
+        seq_y = data[i, y_begin:y_end, target_s:target_e]
         seq_x_mark = self.time_features[s_begin:s_end, :]
         seq_y_mark = self.time_features[y_begin:y_end, :]
 
@@ -273,7 +273,6 @@ class TimeSeriesDataset(Dataset):
         return data
 
     def load_data(self):
-        print(self.global_test_point)
         # Process dataframe - use absolute path
         file_path = (self.data_dir / self.ds_config.file_name).resolve()
         df = pd.read_parquet(str(file_path))
@@ -362,9 +361,9 @@ class TimeSeriesDataset(Dataset):
         if id_mask is not None:
             id_mask = id_mask[:, border_s:border_e, :]
 
-        # reshape the data according to features
-        if self.features == Features.S:
-            data = rearrange(data, 'n l c -> (n c) l 1') # (N * C) l 1
+        # # reshape the data according to features
+        # if self.features == Features.S:
+        #     data = rearrange(data, 'n l c -> (n c) l 1') # (N * C) l 1
 
         self.feature_cols = numeric_cols
         self.data = data

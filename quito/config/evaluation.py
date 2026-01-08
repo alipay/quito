@@ -6,4 +6,8 @@ class MetricType(Enum):
     MAE = 'mae'
     CRPS = 'crps'
     RMSE = 'rmse'
-    LOSS = 'loss'
+    MASE = 'mase' # in-sample baseline version of MASE
+    MASE_LEAK = 'mase_leak' # leakage version of MASE (use lagged future values as baseline)
+    MAPE = 'mape'
+    SMAPE = 'smape'
+    SMASE = 'smase'

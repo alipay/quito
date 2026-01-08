@@ -59,7 +59,6 @@ class DatasetConfig(BaseConfig):
         """
         # data: (N, L, C)
         if not test:
-            # if test is not needed, split the L into train and valid using valid_ratio
             valid_size = int(L * self.valid_ratio)
             train_size = L - valid_size
             return train_size, valid_size, 0
@@ -109,7 +108,7 @@ class DataConfig(BaseConfig):
     forecast_horizon: int = 24
     features: str = "MS"  # M: multivariate->multivariate, S: univariate->univariate, MS: multivariate->univariate
     normalize: bool = True
-    global_test_point: str = '2023-09-01 00:00:00'
+    global_test_point: str = '2024-09-01 00:00:00'
     
     # Data loading
     batch_size: int = 32

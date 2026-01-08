@@ -23,9 +23,9 @@ from copy import deepcopy
 import time
 import json
 
-from quito.config.auto import AutoConfig
+from quito.config import AutoConfig
 from quito.config.training import TaskType, ModeType
-from quito.models.auto import AutoModel
+from quito.models import AutoModel
 from quito.utils.distributed import setup_evaluation
 from quito.utils.common import set_seed
 from quito.datasets import load_datasets
@@ -92,7 +92,7 @@ class ModelEvaluator:
 
         # Store config
         self.training_config = training_config
-        self.batch_size = training_config.batch_size
+        self.batch_size = training_config.eval_batch_size
 
         # Tracking statistics
         self.eval_count = 0
@@ -247,7 +247,7 @@ def main():
 
         for future_idx, future in enumerate(futures):
             try:
-                result = ray.get(future, timeout=300)  # 5 min timeout per task
+                result = ray.get(future)  # 5 min timeout per task
                 results.append(result)
 
                 if (future_idx + 1) % max(1, len(futures) // 10) == 0:
@@ -260,6 +260,9 @@ def main():
                     "error": "Timeout",
                     "metrics": {}
                 })
+            except KeyboardInterrupt as e:
+                raise KeyboardInterrupt from e
+
             except Exception as e:
                 logging.error(f"Task {future_idx} failed: {str(e)}")
                 results.append({

@@ -1,42 +1,34 @@
 """
-Model configuration classes for QUITO library.
+Model configuration classes for QUITO library. If pretrained_model_name_or_path is given, the model will be loaded from huggingface, and the output class wil
+have type PretrainedConfig.
 """
 
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any, ClassVar, Type
 from dataclasses import dataclass, field
 from enum import Enum
 from omegaconf import DictConfig
+from transformers import PretrainedConfig
 
 from quito.config.base import BaseConfig
 from quito.utils.common import register_to_mapping
 
 
-class ModelType(Enum):
-    """Enumeration of supported model types."""
-    PATCHTST = 'patchtst'
-    DLINEAR = 'dlinear'
-    CHRONOS = 'chronos'
-    MORIAI = 'moriai'
-    HUGGINGFACE = 'huggingface'
-    TSTRANSFORMER = 'tstransformer'
-
 @dataclass
 class ModelConfig(BaseConfig):
     """
-    Configuration for time series models.
-    
-    This class defines the parameters for different types of time series models,
-    including GAN-based, Transformer-based, VAE-based, and ODE-based models.
+    Configuration for time series models, model config is named in special format {ModelName}ModelConfig,
+    the ModelName will be model_name field in the config yaml.
     """
-    
+    REGISTRY: ClassVar[Dict[str, Type["ModelConfig"]]] = {}
+
     # Model identification
-    model_name: ModelType
-    
+    model_name: str = 'PatchTST'
+    pretrained_model_name_or_path: Optional[str] = None # This is a placeholder for model from huggingface
     # Data dimensions
     input_dim: int = 1
     hidden_dim: int = 64
     output_dim: int = 1
-    
+
     # Architecture parameters
     num_layers: int = 2
     dropout: float = 0.1
@@ -50,7 +42,7 @@ class ModelConfig(BaseConfig):
     attention_dropout: float = 0.1
     pre_norm: bool = True
     pe: str = 'zero' # Positional embedding
-    
+
     # Time series forecasting parameters
     seq_len: int = 512  # Input sequence length
     label_len: int = 48  # Label length for decoder start
@@ -59,37 +51,36 @@ class ModelConfig(BaseConfig):
     enc_in: int = 1  # Encoder input size
     dec_in: int = 1  # Decoder input size
     c_out: int = 1  # Output size
-    
-    def __post_init__(self):
-        """Post-initialization validation."""
-        self.model_name = ModelType(self.model_name)
-        super().__post_init__()
 
     def validate(self):
         pass
-    
+
     @classmethod
-    def get_default_config(cls, model_type: ModelType) -> "ModelConfig":
+    def get_default_config(cls, model_name: str) -> "ModelConfig":
         """
         Get default configuration for a specific model type.
-        
+
         Args:
-            model_type: Type of model to get default config for
-            
+            model_name: Type of model to get default config for
+
         Returns:
             Default configuration for the model type
         """
         raise NotImplementedError
-    
+
     def to_huggingface_config(self) -> Dict[str, Any]:
         """
         Convert to Hugging Face Transformers compatible configuration.
-        
+
         Returns:
             Dictionary compatible with Hugging Face Transformers
         """
         raise NotImplementedError
-    
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        ModelConfig.REGISTRY[cls.__name__] = cls
+
 
 @dataclass
 class PatchTSTModelConfig(ModelConfig):
@@ -133,60 +124,24 @@ class DLinearModelConfig(ModelConfig):
 
 
 @dataclass
-class ChronosModelConfig(ModelConfig):
-    """
-    Configuration for Chronos model.
-    """
-    pretrained_model_name_or_path: str = "amazon/chronos-t5-small"
-    prediction_length: int = 192
-    num_samples: int = 20
-    temperature: float = 1.0
-    top_k: int = 50
-    top_p: float = 1.0
-
-
-@dataclass
-class MoriaiModelConfig(ModelConfig):
-    """
-    Configuration for Moirai model.
-    """
-    pretrained_model_name_or_path: str = "Salesforce/moirai-1.0-R-small"
-    prediction_length: int = 96
-    patch_size: int = 64
-    context_length: int = 1000
-    num_samples: int = 100
-    target_dim: int = 1  # Number of target variables
-    feat_dynamic_real_dim: int = 0  # Number of dynamic real features
-    past_feat_dynamic_real_dim: int = 0  # Number of past dynamic real features
-    mode: str = "inference"  # Only "inference" is supported (pretrain is not available)
-
-@dataclass
-class HuggingFaceModelConfig(ModelConfig):
-    """
-    Configuration for generic Hugging Face model.
-    """
-    pretrained_model_name_or_path: str = "google/timesfm-1.0-200m"
-    trust_remote_code: bool = True
-
-@dataclass
 class TSTransformerModelConfig(ModelConfig):
     """
     Configuration for TSTransformer model.
     """
     layers: list = field(default_factory=lambda: [
         'time_full',
-        'feature_full', 
-        'time_full', 
-        'feature_full', 
-        'time_full', 
-        'feature_full', 
-        'time_full', 
-        'feature_full', 
-        'time_full', 
         'feature_full',
-        'time_full', 
+        'time_full',
+        'feature_full',
+        'time_full',
+        'feature_full',
+        'time_full',
+        'feature_full',
+        'time_full',
+        'feature_full',
+        'time_full',
         'feature_full'])
-    
+
     patch_size: int = 8
     time_pe_type: str = None
     feature_pe_type: str = 'subspace'
@@ -205,3 +160,8 @@ class TSTransformerModelConfig(ModelConfig):
     max_context_len: int = 5000
     max_features: int = 10
     revin: bool = True
+
+
+@dataclass
+class TiRexModelConfig(ModelConfig):
+    pass

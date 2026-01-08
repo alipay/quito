@@ -4,54 +4,42 @@ Moirai Model Wrapper - Simple and lightweight for time series forecasting.
 import torch
 import torch.nn as nn
 from typing import Dict, Tuple, Optional, Any
+from transformers import PretrainedConfig
 
 from quito.models.base import TimeSeriesModel
-from quito.config.model import MoriaiModelConfig
 
 
-class MoriaiModel(TimeSeriesModel):
+class MoiraiV2(TimeSeriesModel):
     """
-    Lightweight wrapper for Salesforce Moirai time series foundation model.
-    
+    Lightweight wrapper for Salesforce MoiraiV2 time series foundation model.
+
     NOTE: This model is INFERENCE-ONLY. Pretraining is not supported.
     Use this model for zero-shot forecasting on your time series data.
+
+    To Run morial, make sure you have the Salesforce Moirai library installed:
+    ```bash
+    pip install uni2ts
+    ```
     """
-    
-    def __init__(self, config: MoriaiModelConfig, local_rank: int = -1):
+
+    def __init__(self, config: PretrainedConfig, local_rank: int = -1):
         super().__init__(config, local_rank)
-        self.mode = getattr(config, 'mode', 'inference')
-        
-        # Warn if pretrain mode is requested
-        if self.mode == "pretrain":
-            import logging
-            logging.warning(
-                "Moirai pretraining is NOT supported. "
-                "Model will be loaded in inference-only mode. "
-                "See train_step() for details."
-            )
-            self.mode = "inference"  # Force inference mode
-        
+
         # Try to load Moirai
         try:
-            from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
-            import os
-            
-            device = f"cuda:{local_rank}" if local_rank >= 0 and torch.cuda.is_available() else "cpu"
-            model_path = config.pretrained_model_name_or_path
-            
-            # ------------------------------------------------------------------
-            # Load MoiraiModule and wrap in MoiraiForecast (inference only)
-            # ------------------------------------------------------------------
-            try:
-                moirai_module = MoiraiModule.from_pretrained(model_path)
-            except Exception as e:
-                raise ValueError(f"Could not load MoiraiModule from {model_path}: {e}")
-            
-            # Get dimensions from config or use defaults
-            target_dim = getattr(config, 'target_dim', 1)
-            feat_dynamic_real_dim = getattr(config, 'feat_dynamic_real_dim', 0)
-            past_feat_dynamic_real_dim = getattr(config, 'past_feat_dynamic_real_dim', 0)
-            
+            from uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module
+            model = Moirai2Forecast(
+                    # get model
+                    module=Moirai2Module.from_pretrained(
+                        config.name_or_path,
+                    ),
+                    prediction_length=config.forecast_horizon,
+                    context_length=1680,
+                    target_dim=1,
+                    feat_dynamic_real_dim=0,
+                    past_feat_dynamic_real_dim=0,
+                )
+
             self.model = MoiraiForecast(
                 module=moirai_module,
                 prediction_length=config.prediction_length,
