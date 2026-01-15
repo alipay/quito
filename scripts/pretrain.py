@@ -1,29 +1,34 @@
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 """
 Training script for time series forecasting models.
 
 This script uses YAML configuration files for all training parameters.
-
-Usage:
-    python scripts/train.py --config configs/train_config.yaml
-    python scripts/train.py --config configs/pyraformer_gpu.yaml
 """
 import os
 import argparse
 import logging
 import sys
+import yaml
 from pathlib import Path
 import torch
 from omegaconf import OmegaConf, DictConfig
-from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.distributed as dist
+from torch.utils.data import DataLoader
+import ray
+from typing import Dict, Any
+import traceback
+from copy import deepcopy
+import time
+import json
+
+from ray import train, tune
+from ray.train.torch import TorchTrainer, prepare_model
 
 from quito.config.auto import AutoConfig
 from quito.config.training import TaskType, ModeType
 from quito.models.auto import AutoModel
 from quito.trainers.auto import AutoTrainer
-from quito.utils.distributed import setup, DistributedGroupManager
-from quito.utils.common import set_seed
+from quito.utils.distributed import setup, setup_logging
+from quito.utils.common import set_seed, deep_update
 from quito.datasets import load_datasets
 
 # Add parent directory to path
@@ -33,18 +38,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Train time series forecasting models using YAML configuration",
+        description="Test time series forecasting models using YAML configuration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Train with default config
-  python scripts/train.py --config configs/train_config.yaml
-
-  # Train with GPU-optimized config
-  python scripts/train.py --config configs/pyraformer_gpu.yaml
-
-  # Quick test training
-  python scripts/train.py --config configs/informer_quick.yaml
+    Examples:
         """
     )
 
@@ -54,87 +51,168 @@ Examples:
         required=True,
         help="Path to YAML config file (required)"
     )
-
+    parser.add_argument(
+        "--tuning_config_path",
+        type=str,
+        required=True,
+        help="Path to tuning YAML config file (required)"
+    )
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        required=True,
+        default=1  # num of workers of ray cluster
+    )
+    parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=10,
+    )
+    parser.add_argument(
+        "--use_gpu",
+        type=int,
+        default=1,
+        help="Use GPU for training"
+    )
     return parser.parse_args()
 
 
-def main(config=None):
-    """Main training function."""
-    if config is None:
-        args = parse_args()
-        config_source = args.config_path
-    else:
-        config_source = config
-
-    rank, world_size, local_rank, config, output_dir = setup(config_path_or_obj=config_source, mode=TaskType.PRE_TRAIN)
-
-    # load config
-    data_config, model_config, training_config = AutoConfig.from_config(config, rank=rank, world_size=world_size,
+def worker_fn(configs):
+    world_size = train.get_context().get_world_size()
+    local_rank = train.get_context().get_local_rank()
+    global_rank = train.get_context().get_world_rank()
+    config = configs['trial_config']
+    args = configs['args']
+    data_config, model_config, training_config = AutoConfig.from_config(config, rank=global_rank, world_size=world_size,
                                                                         local_rank=local_rank)
+    output_dir = training_config.output_dir
+    setup_logging(global_rank, save_dir=output_dir, filename="log.txt")
+    set_seed(training_config.seed + local_rank)
 
     # save config
-    if rank == 0:
+    if global_rank == 0:
         data_config.save(os.path.join(output_dir, 'data_config.yaml'))
         model_config.save(os.path.join(output_dir, 'model_config.yaml'))
         training_config.save(os.path.join(output_dir, 'training_config.yaml'))
 
-    with DistributedGroupManager(backend=training_config.ddp_backend, rank=rank, local_rank=local_rank,
-                                 world_size=world_size) as group_manager:
-        # Set up distributed training if available
-        # Set seed, each process get a different seed
-        set_seed(training_config.seed + local_rank)
-        # Init training dataset
-        train_dataset = load_datasets(
-            data_config=data_config,
-            task=TaskType.PRE_TRAIN,
-            mode=ModeType.TRAIN
-        )
-        valid_dataset = load_datasets(
-            data_config=data_config,
-            task=TaskType.PRE_TRAIN,
-            mode=ModeType.VALID
-        )
+    # Init training dataset
+    train_dataset = load_datasets(
+        data_config=data_config,
+        task=TaskType.FINE_TUNE,
+        mode=ModeType.TRAIN
+    )
+    valid_dataset = load_datasets(
+        data_config=data_config,
+        task=TaskType.FINE_TUNE,
+        mode=ModeType.VALID
+    )
+    logging.info(f"Training dataset size: {len(train_dataset)} samples")
+    logging.info(f"Validation dataset size: {len(valid_dataset)} samples")
+    # Create model
+    model = AutoModel.from_config(config=model_config, local_rank=local_rank)
+    logging.info(f"Model created: {model.__class__.__name__}")
+    logging.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    # wrap model with ray train
+    model = prepare_model(model)
+    # Create trainer
+    trainer = AutoTrainer.from_config(
+        model=model,
+        train_dataset=train_dataset,
+        eval_dataset=valid_dataset,
+        config=training_config,
+        local_rank=local_rank,
+        global_rank=global_rank,
+        world_size=world_size,
+        use_gpu=args.use_gpu,
+    )
+    logging.info(f"Trainer {trainer.__class__.__name__} created ...")
 
-        logging.info(f"Training dataset size: {len(train_dataset)} samples")
-        logging.info(f"Validation dataset size: {len(valid_dataset)} samples")
+    results = trainer.train()
+    if global_rank == 0:
+        checkpoint = train.Checkpoint.from_directory(output_dir)
+    else:
+        checkpoint = None
 
-        # Create model
-        model = AutoModel.from_config(config=model_config, local_rank=local_rank)
-        logging.info(f"Model created: {model.__class__.__name__}")
-        logging.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    logging.info("=" * 80)
+    logging.info("Training completed successfully!")
+    logging.info('The results are: \n')
+    logging.info(results)
 
-        if torch.cuda.is_available():
-            model = model.to(local_rank)
-            model = DDP(model, device_ids=[local_rank],
-                        find_unused_parameters=training_config.ddp_find_unused_parameters)
-        else:
-            # CPU mode, no DDP wrapping needed for single process, or use specialized CPU DDP if needed
-            logging.info("Running on CPU, skipping DDP wrapping.")
+    train.report(metrics=results, checkpoint=checkpoint)
 
-        # Create trainer
-        trainer = AutoTrainer.from_config(
-            model=model,
-            train_dataset=train_dataset,
-            eval_dataset=valid_dataset,
-            config=training_config,
-            local_rank=local_rank,
-            global_rank=rank,
-            world_size=world_size
-        )
-        logging.info(f"Trainer {trainer.__class__.__name__} created ...")
 
-        try:
-            results = trainer.train()
+def trainer_fn(config):
+    args = config['args']
+    base_config = deepcopy(config['base_config'])
+    num_workers = args.num_workers
+    output_dir = tune.get_context().get_trial_dir()
+    base_config['logging']['output_dir'] = output_dir
 
-            logging.info("=" * 80)
-            logging.info("Training completed successfully!")
-            logging.info('The results are: \n')
-            logging.info(results)
+    scaling_config = train.ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=True if args.use_gpu else False,
+    )
+    trial_config = deep_update(base_config, config['search_space'])
+    train_loop_config = {
+        'trial_config': trial_config,
+        'args': args
+    }
 
-        except Exception as e:
-            logging.error(f"Training failed with error: {e}, peform cleaning ...")
-            raise
+    run_config = train.RunConfig(storage_path=output_dir)
+    trainer = TorchTrainer(worker_fn, scaling_config=scaling_config, run_config=run_config,
+                           train_loop_config=train_loop_config)
+    results = trainer.fit()
+    print(results)
+    tune.report(results.metrics)
+
+
+def main():
+    """Main testing function."""
+    args = parse_args()
+    # get tuning setup
+    base_config, output_dir = setup(args.config_path, mode=TaskType.TUNE)
+    # get tuning config
+    with open(args.tuning_config_path, 'r') as f:
+        tuning_config = yaml.safe_load(f)
+    # initialize ray cluster for distributed training
+    for k in tuning_config:
+        for n, v in tuning_config[k].items():
+            tuning_config[k][n] = eval(v)
+
+    search_space = tuning_config
+    ray.init(ignore_reinit_error=True, logging_level=logging.INFO)
+    tuner = tune.Tuner(
+        trainer_fn,
+        param_space={'base_config': base_config, 'search_space': search_space, 'args': args},
+        tune_config=tune.TuneConfig(
+            metric="best_metric",
+            mode="min",
+            num_samples=args.num_samples,
+        ),
+        run_config=tune.RunConfig(name='param_tuning', storage_path=output_dir)
+    )
+
+    try:
+        results = tuner.fit()
+        best_result = results.get_best_result(metric='best_metric', mode='min')
+        logging.info("=" * 80)
+        logging.info("Tuning completed successfully!")
+        logging.info("Best result:", best_result)
+
+        # Save best config
+        best_config_path = os.path.join(output_dir, "best_hyperparams.json")
+        # with open(best_config_path, "w") as f:
+        #     json.dump(best_result.config, f, indent=2)
+
+        logging.info(f"Best hyperparameters saved to {best_config_path}")
+
+    except Exception as e:
+        logging.error(f"Training failed: {e}")
+        raise
+    finally:
+        ray.shutdown()
 
 
 if __name__ == "__main__":
     main()
+

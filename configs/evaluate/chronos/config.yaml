@@ -1,0 +1,120 @@
+# QUITO Training Configuration
+# This file contains all training parameters for time series forecasting models
+
+# Data Configuration
+data:
+  common:
+    data_dir: "examples/datasets/cluster_data"
+    seq_len: 512  # Input sequence length
+    decoder_label_len: 48  # Label length for decoder start
+    forecast_horizon: 96  # Prediction length
+    features: "M"  # M: multivariate->multivariate, S: univariate->univariate
+    normalize: True
+    global_test_point: '2023-09-01 00:00:00'
+  datasets:
+    TEST_DATA_MIN: 
+      file_name: "open_min_data.parquet"
+      train_ratio: 0.7
+      valid_ratio: 0.2
+      test_ratio: 0.1
+      is_pretrain: False
+      freq: 'M'
+      ds_cls: 'TimeSeriesDataset'
+      ds_kwargs: {}
+      target: 'ind_1'
+    
+    TEST_DATA_HOUR: 
+      file_name: "open_hour_data.parquet"
+      train_ratio: 0.7
+      valid_ratio: 0.2
+      test_ratio: 0.1
+      is_pretrain: False
+      freq: 'H'
+      ds_cls: 'TimeSeriesDataset'
+      ds_kwargs: {}
+      target: 'ind_1'
+    
+    # TEST_DATA_PRETRAIN: 
+    #   file_name: "/ossfs/workspace/ts_data_parquet/test_data.parquet"
+    #   train_ratio: 0.5
+    #   valid_ratio: 0.4
+    #   test_ratio: 0.1
+    #   is_pretrain: False
+    #   freq: 'M'
+    #   ds_cls: 'TimeSeriesDataset'
+    #   ds_kwargs: {}
+    #   target: 'ind_1'
+      
+    
+# Model Configuration
+model:
+  model_name: 'ChronosV2' # the name of the model class
+  pretrained_model_name_or_path: '/ossfs/workspace/chronos'
+
+# Training Configuration
+training:
+  trainer_name: 'NaiveTrainer' # which trainer class to use ? the name of the trainer class
+  num_epochs: 20  # Number of training epochs
+  batch_size: 128  # Training batch size per device
+  eval_batch_size: 128  # Evaluation batch size (if null, uses batch_size)
+  learning_rate: 0.0001  # Learning rate
+  weight_decay: 0.0  # Weight decay for regularization
+  warmup_ratio: 0.0  # Warmup ratio (0.0 to 1.0)
+  gradient_accumulation_steps: 1  # Number of gradient accumulation steps should >= 1
+  max_grad_norm: 0.0  # Max gradient norm for clipping
+  seed: 16  # Random seed for reproducibility
+  num_workers: 6
+  pin_memory: True
+  shuffle: True
+  save_last_k: 10
+  loss: 'mse'
+  loss_kwargs: {}
+  drop_last: True
+
+# Optimization Configuration
+optimization:
+  fp16: False  # Use mixed precision training (FP16)
+  num_workers: 4  # Number of data loading workers
+  scheduler: "cosine"  # Learning rate scheduler
+  scheduler_kwargs: {
+    T_max: 50,
+    eta_min: 0.00001
+  }
+  optimizer: "adam"  # Optimizer
+  optimizer_kwargs: {}
+
+# checkpointing
+checkpointing:
+  enable_checkpoints: True
+  save_last_k: 10
+  save_steps: null  # Save checkpoint every N steps, None if dont want to save at step
+  save_epochs: 1 # Save checkpoint every N epochs, None if dont want to save at epoch
+  
+# Logging Configuration
+logging:
+  output_dir: "outputs"  # Output directory for all outputs, e.g., checkpoints and logs
+  logging_steps: 100  # Log every N steps, None if dont want to log training measures at steps
+  logging_epochs: 1 # log every N epochs, None if dont want to log training measures at epoch
+  sync_loss: False # If true, training loss will be synced across devices
+  sync_score: True # If true, validation score will be synced across devices
+
+# Early Stopping Configuration
+early_stopping:
+  enable_early_stopping: False  # Enable early stopping
+  early_stopping_patience: 5  # Number of evaluations with no improvement before stopping
+  es_metric: "mse"  # Metric to monitor for early stopping
+  greater_is_better: False  # is_greater_better for the metric
+
+evaluation:
+  eval_metrics: ['mse', 'mae', 'mase', 'mase_leak', 'mape', 'smape', 'smase']
+  eval_steps: 10000  # Evaluate every N steps,  None if dont want to eval at steps
+  eval_epochs: 1 # Evaluate every N epochs, None if dont want to eval at epoch
+  save_eval_results_top_k: 10 # wheather to save the last k eval step results, the inputs, predictions and labels during evaluation
+# Resume Training
+resume:
+  checkpoint_path: null  # Path to checkpoint to resume from (if null, start from scratch)
+
+distributed:
+  ddp_find_unused_parameters: True
+  ddp_backend: "nccl"
+

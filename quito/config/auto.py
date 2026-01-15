@@ -16,7 +16,6 @@ class AutoConfig:
     """
     Create correponding model config, data config and training config from main config
     """
-
     @classmethod
     def from_config(cls, config: Union[DictConfig, str], local_rank=-1, rank=-1, world_size=1, **kwargs):
         """
@@ -25,24 +24,23 @@ class AutoConfig:
         if isinstance(config, str):
             config = OmegaConf.load(config)
 
-        # get model config
+        # get model config 
         data_config = cls._get_data_config(config)
         model_config = cls._get_model_config(config)
-        training_config = cls._get_training_config(config=config, rank=rank, local_rank=local_rank,
-                                                   world_size=world_size)
+        training_config = cls._get_training_config(config=config, rank=rank, local_rank=local_rank, world_size=world_size)
 
         return data_config, model_config, training_config
 
     @staticmethod
     def _get_model_config(config: DictConfig) -> Union[ModelConfig, PretrainedConfig]:
-        # get model config
+        # get model config 
         model_config = config.model
         data_config = config.data.common
         # check for pretrained config (huggingface PretrainConfig) or local config (ModelConfig)
-        if model_config.pretrained_model_name_or_path:
+        if 'pretrained_model_name_or_path' in model_config and model_config.pretrained_model_name_or_path:
             # this will load pretrained model config.json from huggingface or local path
             if model_config.model_name == 'TiRex':
-                # for tirex, only checkpoint path is provided, the config is inside the construct a empty config file
+                # for tirex, only checkpoint path is provided, the config is inside the construct a empty config file 
                 model_config_name = f'TiRexModelConfig'
                 model_config_cls = MODEL_CONFIG_MAPPING[model_config_name]
                 curr_model_config = model_config_cls(**model_config)
@@ -69,7 +67,7 @@ class AutoConfig:
         curr_model_config.model_name = model_config.model_name
 
         return curr_model_config
-
+    
     @staticmethod
     def _get_data_config(config: DictConfig):
         logging.info('Loading data config ')
@@ -88,20 +86,20 @@ class AutoConfig:
                                  shuffle=training_config.shuffle,
                                  dataset_configs=dataset_configs,
                                  global_test_point=common_config.global_test_point,
-                                 )
+                                )
         return data_config
-
+    
     @staticmethod
     def _get_training_config(config: DictConfig, local_rank, rank, world_size):
         """
-        Get corresponding training config from main config, will fetch all configs except data, model, then flatten them.
+        Get corresponding training config from main config, will fetch all configs except data, model, then flatten them. 
         Make sure there is no overlap in config keys.
         """
         training_config_dict = {}
         for k, v in config.items():
             if k not in ['data', 'model']:
                 training_config_dict.update(v)
-
+        
         trainer_name = training_config_dict['trainer_name']
         # get training config class
         trainer_config_name = f'{trainer_name}TrainerConfig'

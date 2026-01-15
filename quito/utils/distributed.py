@@ -9,6 +9,7 @@ from typing import Callable, Union
 from functools import wraps
 
 from quito.utils.common import make_output_dir
+from quito.config.training import TaskType
 
 
 class DistributedGroupManager:
@@ -104,7 +105,7 @@ def setup_logging(distributed_rank, save_dir=None, filename="log.txt"):
         logger.addHandler(fh)
 
 
-def setup(config_path_or_obj: Union[str, DictConfig], mode):
+def setup_train(config_path_or_obj: Union[str, DictConfig], mode):
     """
     Set up the environment with configuration from a YAML file or DictConfig object.
     Automatically defaults to CPU/single process if no distributed environment is detected.
@@ -134,7 +135,7 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
 
     if rank in [0, -1]:
         # make output_dir, only on rank 0 or cpu mode
-        output_dir = make_output_dir(config.logging.output_dir)
+        output_dir = make_output_dir(os.path.join(config.logging.output_dir, mode.name))
     else:
         output_dir = None
 
@@ -169,7 +170,7 @@ def setup(config_path_or_obj: Union[str, DictConfig], mode):
     return rank, world_size, local_rank, config, output_dir
 
 
-def setup_evaluation(config_path_or_obj: Union[str, DictConfig]):
+def setup_evaluation(config_path_or_obj: Union[str, DictConfig], mode):
     if isinstance(config_path_or_obj, str):
         config = OmegaConf.load(config_path_or_obj)
         config_source = config_path_or_obj
@@ -177,7 +178,7 @@ def setup_evaluation(config_path_or_obj: Union[str, DictConfig]):
         config = config_path_or_obj
         config_source = "config object"
 
-    output_dir = make_output_dir(os.path.join(config.logging.output_dir, 'evaluation'))
+    output_dir = make_output_dir(os.path.join(config.logging.output_dir, mode.name))
     config.logging.output_dir = str(output_dir)  # Update config with actual path
     setup_logging(0, save_dir=output_dir)
     # Load configuration from YAML file
@@ -190,6 +191,37 @@ def setup_evaluation(config_path_or_obj: Union[str, DictConfig]):
     logging.info(f"Saved configuration to {final_config_path}")
 
     return config, output_dir
+
+
+def setup_tuning(config_path_or_obj: Union[str, DictConfig], mode):
+    if isinstance(config_path_or_obj, str):
+        config = OmegaConf.load(config_path_or_obj)
+        config_source = config_path_or_obj
+    else:
+        config = config_path_or_obj
+        config_source = "config object"
+    output_dir = os.path.abspath(config.logging.output_dir)
+    output_dir = make_output_dir(os.path.join(output_dir, mode.name))
+    config.logging.output_dir = str(output_dir)  # Update config with actual path
+    # Load configuration from YAML file
+    logging.info(f"Load configuration from {config_source}")
+    # Create output directory
+    output_dir = Path(output_dir)
+    # Save final config to output directory
+    final_config_path = output_dir / "config.yaml"
+    OmegaConf.save(config, final_config_path)
+    logging.info(f"Saved configuration to {final_config_path}")
+
+    return config, output_dir
+
+
+def setup(config_path_or_obj: Union[str, DictConfig], mode):
+    if mode == TaskType.EVALUATE:
+        return setup_evaluation(config_path_or_obj, mode)
+    elif (mode == TaskType.FINE_TUNE) or (mode == TaskType.PRE_TRAIN):
+        return setup_train(config_path_or_obj, mode)
+    elif mode == TaskType.TUNE:
+        return setup_tuning(config_path_or_obj, mode)
 
 
 def rank_zero_only(fn: Callable) -> Callable:

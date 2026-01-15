@@ -100,3 +100,14 @@ def load_json(output_path: Union[str, Path], logger=None) -> Dict[str, Any]:
                 print(msg)
             return {}
     return {}
+
+def deep_update(original, update_with):
+    """
+    Recursively update a nested dictionary `original` with values from `update_with`.
+    - If a value in `update_with` is a dict, it will be merged recursively.
+    - Otherwise, the value in `original` is overwritten.
+    """
+    for k, v in update_with.items():
+        original[k].update(update_with[k])
+            
+    return original

@@ -20,29 +20,30 @@ from quito.models.base import BaseModel
 class AutoTrainer:
     """
     Auto model class that automatically loads the appropriate model.
-
+    
     This class follows the Hugging Face Transformers pattern for automatic
     model loading based on configuration or model name.
     """
-
+    
     @classmethod
-    def from_config(cls,
+    def from_config(cls, 
                     model: BaseModel,
                     train_dataset: Optional[Dataset] = None,
                     eval_dataset: Optional[Dataset] = None,
                     config: Optional[TrainerConfig] = None,
                     local_rank: int = -1,
-                    global_rank: int = -1,
-                    world_size: int = -1,
+                    global_rank: int = -1,  
+                    world_size: int = -1, 
+                    use_gpu: int = 1, 
                     **kwargs) -> BaseTrainer:
         """
         Load a model from configuration.
-
+        
         Args:
             config: Model configuration object
             local_rank: Local rank for distributed training
             **kwargs: Additional arguments to pass to the model constructor
-
+            
         Returns:
             Initialized model instance
         """
@@ -57,5 +58,6 @@ class AutoTrainer:
                            local_rank=local_rank,
                            global_rank=global_rank,
                            world_size=world_size,
+                           use_gpu=use_gpu,
                            **kwargs)
     

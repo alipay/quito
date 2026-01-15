@@ -66,36 +66,36 @@ class DatasetConfig(BaseConfig):
             train_size = int(L * self.train_ratio)
             valid_size = int(L * self.valid_ratio)
             test_size = L - train_size - valid_size
-
+        
             return train_size, valid_size, test_size
-
+    
     def get_ds_class(self, dataset_mapping):
         ds_cls = dataset_mapping.get(self.ds_cls)
         assert ds_cls is not None, f"dataset class {self.ds_cls} not found in dataset_mapping"
-
+        
         return ds_cls
 
     def validate(self):
         if not 0 <= self.train_ratio <= 1:
             raise ValueError("train_split must be between 0 and 1")
-
+        
         if not 0 <= self.valid_ratio <= 1:
             raise ValueError("val_split must be between 0 and 1")
-
+        
         if not 0 <= self.test_ratio <= 1:
             raise ValueError("test_split must be between 0 and 1")
-
+        
         # Check that splits sum to approximately 1
         total_split = self.train_ratio + self.valid_ratio + self.test_ratio
         if abs(total_split - 1.0) > 0.01:
             raise ValueError(f"Data splits must sum to 1.0, got {total_split}")
-
-
+        
+        
 @dataclass
 class DataConfig(BaseConfig):
     """
     Configuration for time series datasets.
-
+    
     This class defines the parameters for loading and preprocessing
     time series data, including data sources, preprocessing steps,
     and augmentation strategies.

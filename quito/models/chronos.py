@@ -13,16 +13,16 @@ from quito.models.base import TimeSeriesModel
 class ChronosV2(TimeSeriesModel):
     """
     Lightweight wrapper for Amazon Chronos time series foundation model.
-
+    
     Supports:
     - Zero-shot inference (predict)
     - Fine-tuning/Training (forward)
     - Probabilistic forecasting (predict_prob)
     """
-
+    
     def __init__(self, config: PretrainedConfig, local_rank: int = -1):
         super().__init__(config, local_rank)
-
+        
         # Try to load Chronos pipeline
         try:
             from chronos import Chronos2Pipeline
@@ -32,7 +32,7 @@ class ChronosV2(TimeSeriesModel):
                 torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
             )
             self.model = self.pipeline.model
-
+        
         except ImportError as e:
             raise ImportError(
                 "\n" + "="*80 + "\n"
@@ -51,33 +51,33 @@ class ChronosV2(TimeSeriesModel):
     def forward(self, x: torch.Tensor, y: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
         Forward pass for training.
-
+        
         Args:
             x: Context time series [batch, seq_len, 1]
             y: Target time series [batch, pred_len, 1]
             **kwargs: Additional arguments (filtered to avoid conflicts)
-
+            
         Returns:
             Loss tensor for training
         """
         raise NotImplementedError("ChronosV2 model does not support training directly.")
-
-
+    
+    
     def eval_step(self, batch: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
         """
         Perform a single evaluation step.
-
+        
         Args:
             batch: Evaluation batch
-
+            
         Returns:
             Dictionary containing loss and other metrics
         """
         self.eval()
-
+        
         with torch.no_grad():
             score_dict, y_pred = self._eval_step(**batch)
-
+    
             return score_dict, y_pred
 
     def predict(self, x: torch.Tensor, y: torch.Tensor = None, x_mark: torch.Tensor = None, y_mark: torch.Tensor = None, **kwargs) -> torch.Tensor:
@@ -102,3 +102,4 @@ class ChronosV2(TimeSeriesModel):
         #         pred = torch.tensor(forecast).median(dim=1).values
         # return pred.unsqueeze(-1)
         return forecast.permute(0, 2, 1)
+    

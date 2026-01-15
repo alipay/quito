@@ -47,6 +47,7 @@ class DLinear(TimeSeriesModel):
         super().__init__(config, local_rank)
         self.seq_len = config.seq_len
         self.pred_len = config.forecast_horizon
+        self.revin = config.revin
 
         # Decompsition Kernel Size
         kernel_size = config.kernel_size
@@ -75,6 +76,13 @@ class DLinear(TimeSeriesModel):
 
     def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):           # x: [Batch, Input length, Channel]
         # x: [Batch, Input length, Channel]
+        if self.revin:
+            # Normalization from Non-stationary Transformer
+            means = x.mean(1, keepdim=True).detach()
+            x = x - means
+            stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
+            x /= stdev
+
         seasonal_init, trend_init = self.decompsition(x)
         seasonal_init, trend_init = seasonal_init.permute(0,2,1), trend_init.permute(0,2,1)
         if self.individual:
@@ -88,4 +96,7 @@ class DLinear(TimeSeriesModel):
             trend_output = self.Linear_Trend(trend_init)
 
         x = seasonal_output + trend_output
+        if self.revin:
+            x = x * stdev + means
+
         return x.permute(0,2,1) # to [Batch, Output length, Channel]

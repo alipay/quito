@@ -296,15 +296,15 @@ datasets:
 ```
 
 ### Add Custom Models
-See [docs/EXAMPLES.md](../docs/EXAMPLES.md) for detailed instructions on adding custom models.
+See [docs/EXAMPLES.md](../docs/tune.md) for detailed instructions on adding custom models.
 
 ## 📚 Documentation
 
 For more detailed information:
-- **Training Guide**: [docs/TRAINING.md](../docs/TRAINING.md)
-- **Evaluation Guide**: [docs/EVALUATION.md](../docs/EVALUATION.md)
+- **Training Guide**: [docs/TRAINING.md](../docs/pretrain.md)
+- **Evaluation Guide**: [docs/EVALUATION.md](../docs/evaluate.md)
 - **Dataset Quality Guide**: [docs/DATASET_QUALITY.md](../docs/DATASET_QUALITY.md)
-- **Examples Explained**: [docs/EXAMPLES.md](../docs/EXAMPLES.md)
+- **Examples Explained**: [docs/EXAMPLES.md](../docs/tune.md)
 
 ## 🐛 Troubleshooting
 

@@ -7,3 +7,7 @@ from .dlinear import DLinear
 from .patchtst import PatchTST
 from .tstransformer import TSTransformer
 from .auto import AutoModel
+from .itransformer import ITransformer
+from .tsmixer import TSMixer
+from .crossformer import CrossFormer
+from .pyraformer import PyraFormer

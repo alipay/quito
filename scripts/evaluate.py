@@ -26,7 +26,7 @@ import json
 from quito.config import AutoConfig
 from quito.config.training import TaskType, ModeType
 from quito.models import AutoModel
-from quito.utils.distributed import setup_evaluation
+from quito.utils.distributed import setup
 from quito.utils.common import set_seed
 from quito.datasets import load_datasets
 
@@ -190,12 +190,13 @@ def main():
     """Main testing function."""
     args = parse_args()
     # get evaluation setup
-    config, output_dir = setup_evaluation(args.config_path)
+    config, output_dir = setup(args.config_path, mode=TaskType.EVALUATE)
     # load config
     data_config, model_config, training_config = AutoConfig.from_config(config=config, rank=-1, world_size=-1,
                                                                         local_rank=-1)
     # initialize ray cluster for distributed training
     ray.init(num_gpus=args.num_gpus)
+
     try:
         datasets = load_datasets(
             data_config=data_config,
@@ -220,7 +221,7 @@ def main():
         # Prepare evaluation tasks
         tasks = []
         for dataset_idx, dataset in enumerate(datasets):
-            user_ids = dataset.get_all_ids()
+            user_ids = sorted(dataset.get_all_ids())
             for user_id in user_ids:
                 tasks.append((dataset_idx, int(user_id)))
 
@@ -271,8 +272,10 @@ def main():
                     "metrics": {}
                 })
 
-        with open(os.path.join(output_dir, 'eval_results.json'), 'w') as f:
-            json.dump({'final_results': results}, f)
+        model_name = model_config.model_name
+        with open(os.path.join(output_dir, f'eval_results_{model_name}.json'), 'w') as f:
+            final_results = {'final_results': results, 'model_name': model_name}
+            json.dump(final_results, f)
 
     finally:
         ray.shutdown()

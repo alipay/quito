@@ -18,16 +18,16 @@ class TiRex(TimeSeriesModel):
     To run TiRex, make sure you have installed, this will require a python version >=3.11
 
     https://github.com/NX-AI/tirex.git
-
+        
     Supports:
     - Zero-shot inference (predict)
     - Fine-tuning/Training (forward)
     - Probabilistic forecasting (predict_prob)
     """
-
+    
     def __init__(self, config: PretrainedConfig, local_rank: int = -1):
         super().__init__(config, local_rank)
-
+        
         # Try to load Chronos pipeline
         try:
             from tirex import TiRexZero
@@ -41,30 +41,30 @@ class TiRex(TimeSeriesModel):
                 model_path,
                 backend='torch'
             )
-
+        
         except ImportError as e:
             raise ImportError(
-                "\n" + "=" * 80 + "\n"
-                                  "Tirex library not found!\n"
-                + "=" * 80
+                "\n" + "="*80 + "\n"
+                "Tirex library not found!\n"
+                + "="*80
             )
 
     def forward(self, x: torch.Tensor, y: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
         Forward pass for training.
-
+        
         Args:
             x: Context time series [batch, seq_len, 1]
             y: Target time series [batch, pred_len, 1]
             **kwargs: Additional arguments (filtered to avoid conflicts)
-
+            
         Returns:
             Loss tensor for training
         """
         raise NotImplementedError("ChronosV2 model does not support training directly.")
+    
 
-    def predict(self, x: torch.Tensor, y: torch.Tensor = None, x_mark: torch.Tensor = None, y_mark: torch.Tensor = None,
-                **kwargs) -> torch.Tensor:
+    def predict(self, x: torch.Tensor, y: torch.Tensor = None, x_mark: torch.Tensor = None, y_mark: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
         Generate point forecasts (median).
         """
@@ -91,6 +91,6 @@ class TiRex(TimeSeriesModel):
         #     else:
         #         # Fallback for tensor
         #         pred = torch.tensor(forecast).median(dim=1).values
-
+            
         # return pred.unsqueeze(-1)
         return forecast
