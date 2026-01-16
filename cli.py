@@ -6,150 +6,106 @@ Provides convenient commands for training, fine-tuning, evaluation, and hyperpar
 of time series forecasting models.
 
 Usage:
-    quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml
-    quito-cli finetune --config_path configs/finetune/patchtst/config.yaml
-    quito-cli evaluate --config_path configs/evaluate/patchtst/config.yaml
-    quito-cli tune --config_path configs/tune/patchtst/config.yaml
+    quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml --use_gpu 1 --num_processes 8
+    quito-cli finetune --config_path configs/finetune/patchtst/config.yaml --use_gpu 1 --num_processes 8
+    quito-cli evaluate --config_path configs/evaluate/patchtst/config.yaml --num_gpus 8
+    quito-cli tune --config_path configs/tune/patchtst/config.yaml --tuning_config_path configs/tune/patchtst/tuning_config.yaml --use_gpu 1 --num_processes 8
 """
 
 import sys
-import os
 import argparse
 import subprocess
-from pathlib import Path
+
+from importlib import resources
 
 
-def get_script_path(command: str) -> Path:
-    """Get the path to the corresponding script."""
-    script_dir = Path(__file__).parent / "scripts"
+def get_script_name(command: str):
     script_map = {
         "pretrain": "pretrain.py",
         "finetune": "finetune.py",
         "evaluate": "evaluate.py",
         "tune": "tune.py"
     }
-    
+
     if command not in script_map:
         raise ValueError(f"Unknown command: {command}")
-    
-    script_path = script_dir / script_map[command]
-    if not script_path.exists():
-        raise FileNotFoundError(f"Script not found: {script_path}")
-    
-    return script_path
+
+    return script_map[command]
 
 
 def pretrain(args):
     """Run pre-training script."""
-    script_path = get_script_path("pretrain")
-    
+    script_name = get_script_name("pretrain")
+
     cmd = []
-    
-    # Check if we need distributed training
-    num_gpus = getattr(args, 'num_gpus', None)
-    if num_gpus and num_gpus > 1:
-        # Use torchrun for distributed training
+
+    with resources.path("quito.scripts", script_name) as script_path:
+        assert args.config_path, "config path must be provided !!!!"
+
+        # Use torchrun for distributed training, it can handle cpu
         cmd = [
             "torchrun",
-            f"--nproc_per_node={num_gpus}",
-            str(script_path)
-        ]
-    else:
-        cmd = [sys.executable, str(script_path)]
-    
-    # Add config path
-    if args.config_path:
-        cmd.extend(["--config_path", args.config_path])
-    
-    # Add any additional arguments
-    if hasattr(args, 'extra_args') and args.extra_args:
-        cmd.extend(args.extra_args)
-    
-    print(f"Running command: {' '.join(cmd)}")
-    return subprocess.call(cmd)
+            f"--nproc_per_node={args.num_processes}",
+            str(script_path),
+            f"--use_gpu={args.use_gpu}",
+            f"--config_path={args.config_path}"]
+
+        return cmd
 
 
 def finetune(args):
     """Run fine-tuning script."""
-    script_path = get_script_path("finetune")
-    
+    script_name = get_script_name("finetune")
+
     cmd = []
-    
-    # Check if we need distributed training
-    num_gpus = getattr(args, 'num_gpus', None)
-    if num_gpus and num_gpus > 1:
-        # Use torchrun for distributed training
+
+    with resources.path("quito.scripts", script_name) as script_path:
+        assert args.config_path, "config path must be provided !!!!"
+
+        # Use torchrun for distributed training, it can handle cpu
         cmd = [
             "torchrun",
-            f"--nproc_per_node={num_gpus}",
-            str(script_path)
-        ]
-    else:
-        cmd = [sys.executable, str(script_path)]
-    
-    # Add config path
-    if args.config_path:
-        cmd.extend(["--config_path", args.config_path])
-    
-    # Add any additional arguments
-    if hasattr(args, 'extra_args') and args.extra_args:
-        cmd.extend(args.extra_args)
-    
-    print(f"Running command: {' '.join(cmd)}")
-    return subprocess.call(cmd)
+            f"--nproc_per_node={args.num_processes}",
+            str(script_path),
+            f"--use_gpu={args.use_gpu}",
+            f"--config_path={args.config_path}"]
+
+        return cmd
 
 
 def evaluate(args):
     """Run evaluation script."""
-    script_path = get_script_path("evaluate")
-    
-    cmd = [sys.executable, str(script_path)]
-    
-    # Add config path
-    if args.config_path:
+    script_name = get_script_name("evaluate")
+
+    cmd = [sys.executable]
+    with resources.path("quito.scripts", script_name) as script_path:
+        assert args.num_gpus >= 1, "Evaluation only supports GPU, set num_gpus >= 1"
+        assert args.config_path, "config path must be provided !!!!"
+
+        cmd.extend([str(script_path)])
         cmd.extend(["--config_path", args.config_path])
-    
-    # Add num_gpus if specified
-    if hasattr(args, 'num_gpus') and args.num_gpus:
         cmd.extend(["--num_gpus", str(args.num_gpus)])
-    
-    # Add any additional arguments
-    if hasattr(args, 'extra_args') and args.extra_args:
-        cmd.extend(args.extra_args)
-    
-    print(f"Running command: {' '.join(cmd)}")
-    return subprocess.call(cmd)
+
+        return cmd
 
 
 def tune(args):
     """Run hyperparameter tuning script."""
-    script_path = get_script_path("tune")
-    
-    cmd = [sys.executable, str(script_path)]
-    
-    # Add config paths
-    if args.config_path:
+    script_name = get_script_name('tune')
+
+    cmd = [sys.executable]
+    with resources.path("quito.scripts", script_name) as script_path:
+        assert args.config_path, "config path must be provided !!!!"
+        assert args.tuning_config_path, "tuning config path must be provided !!!!"
+
+        cmd.extend([str(script_path)])
         cmd.extend(["--config_path", args.config_path])
-    
-    if hasattr(args, 'tuning_config_path') and args.tuning_config_path:
         cmd.extend(["--tuning_config_path", args.tuning_config_path])
-    
-    # Add tuning-specific parameters
-    if hasattr(args, 'num_workers') and args.num_workers:
-        cmd.extend(["--num_workers", str(args.num_workers)])
-    
-    if hasattr(args, 'num_samples') and args.num_samples:
-        cmd.extend(["--num_samples", str(args.num_samples)])
-    
-    if hasattr(args, 'use_gpu') and args.use_gpu:
+        cmd.extend(["--num_processes", str(args.num_processes)])
         cmd.extend(["--use_gpu", str(args.use_gpu)])
-    
-    # Add any additional arguments
-    if hasattr(args, 'extra_args') and args.extra_args:
-        cmd.extend(args.extra_args)
-    
-    print(f"Running command: {' '.join(cmd)}")
-    return subprocess.call(cmd)
+        cmd.extend(["--num_samples", str(args.num_samples)])
+
+        return cmd
 
 
 def main():
@@ -162,24 +118,24 @@ Examples:
   # Pre-training
   quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml
   quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml --num_gpus 4
-  
+
   # Fine-tuning
   quito-cli finetune --config_path configs/finetune/patchtst/config.yaml
   quito-cli finetune --config_path configs/finetune/patchtst/config.yaml --num_gpus 4
-  
+
   # Evaluation
   quito-cli evaluate --config_path configs/evaluate/patchtst/config.yaml
   quito-cli evaluate --config_path configs/evaluate/patchtst/config.yaml --num_gpus 2
-  
+
   # Hyperparameter tuning
   quito-cli tune --config_path configs/tune/patchtst/config.yaml \\
                  --tuning_config_path configs/tune/patchtst/tune_config.yaml \\
-                 --num_workers 4 --num_samples 100 --use_gpu 1
+                 --num_processes 4 --num_samples 100 --use_gpu 1
         """
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+
     # Pre-train command
     pretrain_parser = subparsers.add_parser(
         "pretrain",
@@ -198,17 +154,18 @@ Examples:
         help="Path to the training configuration YAML file"
     )
     pretrain_parser.add_argument(
-        "--num_gpus",
+        "--num_processes",
         type=int,
-        default=None,
-        help="Number of GPUs for distributed training (uses torchrun if > 1)"
+        default=6,
+        help="Number of processes for distributed training"
     )
     pretrain_parser.add_argument(
-        "extra_args",
-        nargs=argparse.REMAINDER,
-        help="Additional arguments to pass to the script"
+        "--use_gpu",
+        type=int,
+        default=1,
+        help="whether to use GPU for training (0 or 1)"
     )
-    
+
     # Fine-tune command
     finetune_parser = subparsers.add_parser(
         "finetune",
@@ -227,17 +184,18 @@ Examples:
         help="Path to the fine-tuning configuration YAML file"
     )
     finetune_parser.add_argument(
-        "--num_gpus",
+        "--num_processes",
         type=int,
-        default=None,
-        help="Number of GPUs for distributed training (uses torchrun if > 1)"
+        default=6,
+        help="Number of processes for distributed training"
     )
     finetune_parser.add_argument(
-        "extra_args",
-        nargs=argparse.REMAINDER,
-        help="Additional arguments to pass to the script"
+        "--use_gpu",
+        type=int,
+        default=1,
+        help="whether to use GPU for training (0 or 1)"
     )
-    
+
     # Evaluate command
     evaluate_parser = subparsers.add_parser(
         "evaluate",
@@ -258,15 +216,10 @@ Examples:
     evaluate_parser.add_argument(
         "--num_gpus",
         type=int,
-        default=None,
-        help="Number of GPUs to use for evaluation"
+        default=1,
+        help="Number of GPUs to use for evaluation, does not support cpu"
     )
-    evaluate_parser.add_argument(
-        "extra_args",
-        nargs=argparse.REMAINDER,
-        help="Additional arguments to pass to the script"
-    )
-    
+
     # Tune command
     tune_parser = subparsers.add_parser(
         "tune",
@@ -276,7 +229,7 @@ Examples:
 Examples:
   quito-cli tune --config_path configs/tune/patchtst/config.yaml \\
                  --tuning_config_path configs/tune/patchtst/tune_config.yaml \\
-                 --num_workers 4 --num_samples 100 --use_gpu 1
+                 --num_processes 4 --num_samples 100 --use_gpu 1
         """
     )
     tune_parser.add_argument(
@@ -288,39 +241,34 @@ Examples:
     tune_parser.add_argument(
         "--tuning_config_path",
         type=str,
-        default=None,
+        required=True,
         help="Path to the tuning configuration YAML file"
     )
     tune_parser.add_argument(
-        "--num_workers",
+        "--num_processes",
         type=int,
-        default=None,
+        default=1,
         help="Number of parallel workers for hyperparameter search"
     )
     tune_parser.add_argument(
         "--num_samples",
         type=int,
-        default=None,
+        default=10,
         help="Number of hyperparameter samples to try"
     )
     tune_parser.add_argument(
         "--use_gpu",
         type=int,
-        default=None,
+        default=1,
         help="Whether to use GPU for tuning (0 or 1)"
     )
-    tune_parser.add_argument(
-        "extra_args",
-        nargs=argparse.REMAINDER,
-        help="Additional arguments to pass to the script"
-    )
-    
+
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return 1
-    
+
     # Execute the appropriate command
     command_map = {
         "pretrain": pretrain,
@@ -328,9 +276,14 @@ Examples:
         "evaluate": evaluate,
         "tune": tune
     }
-    
+
     try:
-        return command_map[args.command](args)
+        cmd = command_map[args.command](args)  # build cmd for subprocess.run
+        print(f"Running command: {' '.join(cmd)}")
+        proc = subprocess.run(cmd)
+
+        return proc.returncode
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

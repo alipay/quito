@@ -118,7 +118,8 @@ class ModelEvaluator:
             dl = DataLoader(
                 dataset,
                 batch_size=self.batch_size,
-                shuffle=False
+                shuffle=False,
+                num_workers=self.training_config.num_workers # number of dataset workers
             )
 
             # Initialize metrics

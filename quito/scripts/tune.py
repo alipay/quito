@@ -1,6 +1,6 @@
 # !/usr/bin/env python3
 """
-Tuning script for time series forecasting models.
+Training script for time series forecasting models.
 
 This script uses YAML configuration files for all training parameters.
 """
@@ -27,7 +27,7 @@ from quito.config.auto import AutoConfig
 from quito.config.training import TaskType, ModeType
 from quito.models.auto import AutoModel
 from quito.trainers.auto import AutoTrainer
-from quito.utils.distributed import setup_tuning, setup_logging
+from quito.utils.distributed import setup, setup_logging
 from quito.utils.common import set_seed, deep_update
 from quito.datasets import load_datasets
 
@@ -58,7 +58,7 @@ def parse_args():
         help="Path to tuning YAML config file (required)"
     )
     parser.add_argument(
-        "--num_workers",
+        "--num_processes",
         type=int,
         required=True,
         default=1  # num of workers of ray cluster
@@ -144,7 +144,7 @@ def worker_fn(configs):
 def trainer_fn(config):
     args = config['args']
     base_config = deepcopy(config['base_config'])
-    num_workers = args.num_workers
+    num_workers = args.num_processes
     output_dir = tune.get_context().get_trial_dir()
     base_config['logging']['output_dir'] = output_dir
 
@@ -170,7 +170,7 @@ def main():
     """Main testing function."""
     args = parse_args()
     # get tuning setup
-    base_config, output_dir = setup_tuning(args.config_path)
+    base_config, output_dir = setup(args.config_path, mode=TaskType.TUNE)
     # get tuning config
     with open(args.tuning_config_path, 'r') as f:
         tuning_config = yaml.safe_load(f)
@@ -197,14 +197,7 @@ def main():
         best_result = results.get_best_result(metric='best_metric', mode='min')
         logging.info("=" * 80)
         logging.info("Tuning completed successfully!")
-        logging.info("Best result:", best_result)
-
-        # Save best config
-        best_config_path = os.path.join(output_dir, "best_hyperparams.json")
-        # with open(best_config_path, "w") as f:
-        #     json.dump(best_result.config, f, indent=2)
-
-        logging.info(f"Best hyperparameters saved to {best_config_path}")
+        logging.info(f"Best result: {best_result}")
 
     except Exception as e:
         logging.error(f"Training failed: {e}")

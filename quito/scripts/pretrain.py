@@ -35,6 +35,17 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Train time series forecasting models using YAML configuration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Train with default config
+  python scripts/train.py --config configs/train_config.yaml
+
+  # Train with GPU-optimized config
+  python scripts/train.py --config configs/pyraformer_gpu.yaml
+
+  # Quick test training
+  python scripts/train.py --config configs/informer_quick.yaml
+        """
     )
 
     parser.add_argument(
