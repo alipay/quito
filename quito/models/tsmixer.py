@@ -13,7 +13,33 @@ from quito.models.utils.tsmixer_utils import TSMixer as TSMixerBase
 
 
 class TSMixer(TimeSeriesModel):
+    """
+    TSMixer model wrapper for QuitoBench.
+    
+    TSMixer is a lightweight MLP-based model that uses mixing layers to capture
+    both temporal and cross-feature dependencies. It's an efficient alternative
+    to transformer models for time series forecasting.
+    
+    Key features:
+    - MLP-based architecture (no attention mechanism)
+    - Mixing layers for temporal and feature mixing
+    - Lightweight and efficient
+    - Optional RevIN normalization
+    
+    Reference:
+        Ekambaram et al. (2023). "TSMixer: Lightweight MLP-Mixer Model for
+        Multivariate Time Series Forecasting"
+    """
     def __init__(self, config: TSMixerModelConfig, local_rank: int = -1):
+        """
+        Initialize the TSMixer model.
+        
+        Args:
+            config (TSMixerModelConfig): Model configuration containing
+                architecture parameters (num_blocks, d_ff, norm_type, etc.).
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+        """
         super().__init__(config, local_rank)
         self.model = TSMixerBase(
             sequence_length=config.seq_len,
@@ -29,7 +55,24 @@ class TSMixer(TimeSeriesModel):
             revin=config.revin
         )
     
-    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):           # x: [Batch, Input length, Channel]
+    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):
+        """
+        Forward pass for time series forecasting.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+            y (torch.Tensor, optional): Target tensor (not used by TSMixer).
+                Defaults to None.
+            x_mark (torch.Tensor, optional): Time features (not used).
+                Defaults to None.
+            y_mark (torch.Tensor, optional): Time features (not used).
+                Defaults to None.
+            **kwargs: Additional arguments (not used).
+        
+        Returns:
+            torch.Tensor: Predicted time series of shape
+                (batch_size, forecast_horizon, n_features).
+        """
         predictions = self.model(x_hist=x)
 
         return predictions

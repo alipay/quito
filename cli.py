@@ -20,6 +20,18 @@ from importlib import resources
 
 
 def get_script_name(command: str):
+    """
+    Map command names to their corresponding script filenames.
+    
+    Args:
+        command (str): The command name (pretrain, finetune, evaluate, or tune).
+        
+    Returns:
+        str: The corresponding script filename.
+        
+    Raises:
+        ValueError: If the command is not recognized.
+    """
     script_map = {
         "pretrain": "pretrain.py",
         "finetune": "finetune.py",
@@ -34,7 +46,23 @@ def get_script_name(command: str):
 
 
 def pretrain(args):
-    """Run pre-training script."""
+    """
+    Construct command to run pre-training script with distributed training support.
+    
+    Uses torchrun for distributed training across multiple processes/GPUs.
+    
+    Args:
+        args: Namespace object containing:
+            - config_path (str): Path to YAML configuration file (required)
+            - num_processes (int): Number of processes for distributed training
+            - use_gpu (int): Whether to use GPU (0 or 1)
+            
+    Returns:
+        list: Command list ready for subprocess execution.
+        
+    Raises:
+        AssertionError: If config_path is not provided.
+    """
     script_name = get_script_name("pretrain")
 
     cmd = []
@@ -54,7 +82,24 @@ def pretrain(args):
 
 
 def finetune(args):
-    """Run fine-tuning script."""
+    """
+    Construct command to run fine-tuning script with distributed training support.
+    
+    Fine-tunes a pre-trained model on specific downstream tasks using torchrun
+    for distributed training.
+    
+    Args:
+        args: Namespace object containing:
+            - config_path (str): Path to YAML configuration file (required)
+            - num_processes (int): Number of processes for distributed training
+            - use_gpu (int): Whether to use GPU (0 or 1)
+            
+    Returns:
+        list: Command list ready for subprocess execution.
+        
+    Raises:
+        AssertionError: If config_path is not provided.
+    """
     script_name = get_script_name("finetune")
 
     cmd = []
@@ -74,7 +119,27 @@ def finetune(args):
 
 
 def evaluate(args):
-    """Run evaluation script."""
+    """
+    Construct command to run evaluation script on trained models.
+    
+    Evaluates model performance on test data using Ray for distributed evaluation
+    across multiple GPUs.
+    
+    Args:
+        args: Namespace object containing:
+            - config_path (str): Path to YAML configuration file (required)
+            - num_gpus (int): Number of GPUs to use for evaluation (must be >= 1)
+            
+    Returns:
+        list: Command list ready for subprocess execution.
+        
+    Raises:
+        AssertionError: If num_gpus < 1 or config_path is not provided.
+        
+    Note:
+        Evaluation currently requires GPU support. For CPU evaluation, modify
+        the num_gpus assertion.
+    """
     script_name = get_script_name("evaluate")
 
     cmd = [sys.executable]
@@ -90,7 +155,29 @@ def evaluate(args):
 
 
 def tune(args):
-    """Run hyperparameter tuning script."""
+    """
+    Construct command to run hyperparameter tuning script.
+    
+    Uses Ray Tune for efficient hyperparameter search across multiple trials.
+    Explores the hyperparameter space defined in the tuning configuration file.
+    
+    Args:
+        args: Namespace object containing:
+            - config_path (str): Path to base YAML configuration file (required)
+            - tuning_config_path (str): Path to tuning-specific YAML config (required)
+            - num_processes (int): Number of parallel workers for tuning
+            - use_gpu (int): Whether to use GPU (0 or 1)
+            - num_samples (int): Number of hyperparameter samples to try
+            
+    Returns:
+        list: Command list ready for subprocess execution.
+        
+    Raises:
+        AssertionError: If config_path or tuning_config_path is not provided.
+        
+    Note:
+        The tuning configuration should define the search space for hyperparameters.
+    """
     script_name = get_script_name('tune')
 
     cmd = [sys.executable]
@@ -109,7 +196,33 @@ def tune(args):
 
 
 def main():
-    """Main CLI entry point."""
+    """
+    Main CLI entry point for QuitoBench commands.
+    
+    Parses command-line arguments and dispatches to the appropriate handler
+    (pretrain, finetune, evaluate, or tune). Each command constructs and
+    executes the corresponding script with the provided configuration.
+    
+    Returns:
+        int: Exit code from the subprocess execution (0 for success).
+        
+    Raises:
+        Exception: Any exceptions from the subprocess execution are propagated.
+        
+    Examples:
+        >>> # Pre-train a model
+        >>> quito-cli pretrain --config_path configs/pretrain/model.yaml
+        
+        >>> # Fine-tune a model
+        >>> quito-cli finetune --config_path configs/finetune/model.yaml
+        
+        >>> # Evaluate a model
+        >>> quito-cli evaluate --config_path configs/evaluate/model.yaml --num_gpus 2
+        
+        >>> # Tune hyperparameters
+        >>> quito-cli tune --config_path configs/tune/model.yaml \\
+        ...     --tuning_config_path configs/tune/tuning.yaml
+    """
     parser = argparse.ArgumentParser(
         description="QUITO Command Line Interface for Time Series Forecasting",
         formatter_class=argparse.RawDescriptionHelpFormatter,

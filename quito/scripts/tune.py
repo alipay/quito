@@ -78,6 +78,25 @@ def parse_args():
 
 
 def worker_fn(configs):
+    """
+    Worker function for Ray Train distributed training.
+    
+    This function is executed by each worker in the Ray Train cluster.
+    It performs the actual training loop for a single hyperparameter trial.
+    
+    Args:
+        configs (dict): Dictionary containing:
+            - trial_config: Trial-specific configuration (merged base + search space)
+            - args: Command line arguments
+    
+    The function:
+    1. Extracts distributed training context (rank, world_size)
+    2. Loads and validates configuration
+    3. Sets up logging and random seed
+    4. Loads training and validation datasets
+    5. Creates and trains the model
+    6. Reports metrics and checkpoint to Ray Train
+    """
     world_size = train.get_context().get_world_size()
     local_rank = train.get_context().get_local_rank()
     global_rank = train.get_context().get_world_rank()
@@ -142,6 +161,22 @@ def worker_fn(configs):
 
 
 def trainer_fn(config):
+    """
+    Trainer function for Ray Tune hyperparameter optimization.
+    
+    Creates a Ray Train trainer for a single hyperparameter trial and executes
+    the training. This function is called by Ray Tune for each trial in the
+    search space.
+    
+    Args:
+        config (dict): Dictionary containing:
+            - base_config: Base configuration object
+            - search_space: Hyperparameter search space for this trial
+            - args: Command line arguments
+    
+    Returns:
+        Results are reported to Ray Tune via tune.report().
+    """
     args = config['args']
     base_config = deepcopy(config['base_config'])
     num_workers = args.num_processes
@@ -167,7 +202,27 @@ def trainer_fn(config):
 
 
 def main():
-    """Main testing function."""
+    """
+    Main hyperparameter tuning function using Ray Tune.
+    
+    Orchestrates hyperparameter optimization using Ray Tune:
+    1. Configuration loading (base config + tuning config)
+    2. Ray cluster initialization
+    3. Search space definition from tuning config
+    4. Ray Tune tuner creation and execution
+    5. Best result extraction and reporting
+    
+    The tuning config file should define a search space using Ray Tune
+    syntax (e.g., tune.grid_search, tune.choice, tune.uniform).
+    
+    Raises:
+        ValueError: If required configuration is missing or invalid.
+        RuntimeError: If tuning fails due to errors.
+        
+    Example:
+        >>> # From command line
+        >>> # python scripts/tune.py --config_path configs/tune/patchtst/config.yaml --tuning_config_path configs/tune/patchtst/tuning_space.yaml --num_samples 10
+    """
     args = parse_args()
     # get tuning setup
     base_config, output_dir = setup(args.config_path, mode=TaskType.TUNE)

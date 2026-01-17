@@ -115,6 +115,12 @@ class BaseTrainer(ABC):
         self.validate()
     
     def __init_subclass__(cls, **kwargs):
+        """
+        Automatically register trainer subclasses in the REGISTRY.
+        
+        This method is called when a subclass of BaseTrainer is defined,
+        automatically adding it to the REGISTRY dictionary for lookup by name.
+        """
         super().__init_subclass__(**kwargs)
         # Register the subclass by its name
         BaseTrainer.REGISTRY[cls.__name__] = cls
@@ -194,7 +200,15 @@ class BaseTrainer(ABC):
 
     def validate(self):
         """
-        validate inputs
+        Validate trainer configuration and inputs.
+        
+        Checks that rank/world_size configuration is consistent (either all -1
+        for CPU mode or all valid for GPU/distributed mode). Also validates that
+        the early stopping metric is included in evaluation metrics.
+        
+        Raises:
+            ValueError: If rank/world_size configuration is invalid.
+            AssertionError: If early stopping metric is not in eval_metrics.
         """
         # Allow CPU mode (rank=-1, world_size=-1) or GPU mode (rank>=0, world_size>0)
         if not ((self.local_rank == -1 and self.global_rank == -1 and self.world_size == -1) or
@@ -208,6 +222,12 @@ class BaseTrainer(ABC):
          f"{self.config.es_metric} must presented in {self.config.eval_metrics} !!!"
 
     def _setup_strategies(self):
+        """
+        Setup evaluation, checkpoint saving, and logging strategies.
+        
+        Configures when to perform evaluation, save checkpoints, and log metrics
+        based on configuration (epoch-based or step-based strategies).
+        """
         eval_strategies = []
         save_strategies = []
         logging_strategies = []
@@ -235,22 +255,47 @@ class BaseTrainer(ABC):
         self.logging_strategies = logging_strategies
 
     def _setup_model(self):
+        """
+        Setup model for training.
+        
+        Configures model metrics, loss function, and device placement.
+        """
         self.actual_model.metrics = self.config.eval_metrics
         self.actual_model.setup_loss_fn(self.config.loss, self.config.loss_kwargs)
         # setup model's correct device
         self.actual_model.device = self.device
 
     def _setup_tensorboard(self):
+        """
+        Setup TensorBoard logging.
+        
+        Initializes SummaryWriter only on rank 0 to avoid duplicate logging
+        in distributed training.
+        """
         if self.global_rank == 0:
             self.writer = SummaryWriter(self.config.output_dir)
         
     def _setup_dataloaders(self):
+        """
+        Setup training and evaluation dataloaders.
+        
+        Creates dataloaders for both training and evaluation datasets.
+        """
         self.train_dataloader = self.get_train_dataloader(self.train_dataset)
         self.eval_dataloader = self.get_eval_dataloader(self.eval_dataset)
     
     def get_train_dataloader(self, ds: ConcatDataset):
         """
-        Get dataloader for training, automatic attach distributed sampler to trainer
+        Get dataloader for training with automatic distributed sampler attachment.
+        
+        Creates a DataLoader for training. Automatically uses DistributedSampler
+        if distributed training is initialized, otherwise uses standard shuffling.
+        
+        Args:
+            ds (ConcatDataset): Training dataset.
+        
+        Returns:
+            DataLoader: Configured training dataloader, or None if ds is None.
         """
         if ds:
             # Use DistributedSampler only if distributed training is initialized
@@ -275,7 +320,16 @@ class BaseTrainer(ABC):
     
     def get_eval_dataloader(self, ds):
         """
-        get dataloader for evaluation
+        Get dataloader for evaluation with automatic distributed sampler attachment.
+        
+        Creates a DataLoader for evaluation. Automatically uses DistributedSampler
+        if distributed training is initialized. Evaluation is never shuffled.
+        
+        Args:
+            ds: Evaluation dataset.
+        
+        Returns:
+            DataLoader: Configured evaluation dataloader, or None if ds is None.
         """
         if ds:
             # Use DistributedSampler only if distributed training is initialized
@@ -298,7 +352,11 @@ class BaseTrainer(ABC):
             
     def load_checkpoint(self):
         """
-        load checkpoint from file
+        Load checkpoint from file if checkpoint_path is configured.
+        
+        Loads model state, optimizer state, scheduler state, and training progress
+        from checkpoint file. Checkpoint is loaded to CPU first to avoid GPU
+        memory spikes, then moved to the appropriate device.
         """
         checkpoint_path = self.config.checkpoint_path
         if checkpoint_path:
@@ -314,6 +372,18 @@ class BaseTrainer(ABC):
             logging.info('Perform training from scratch ...')
 
     def _load_checkpoint(self, checkpoint):
+        """
+        Internal method to load checkpoint state into trainer components.
+        
+        Args:
+            checkpoint (dict): Checkpoint dictionary containing:
+                - model_state_dict: Model weights
+                - optimizer_state_dict: Optimizer state
+                - scheduler_state_dict: Scheduler state (optional)
+                - scaler_state_dict: GradScaler state (optional)
+                - epoch: Last completed epoch
+                - global_step: Last completed global step
+        """
         self.actual_model.load(checkpoint)
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if self.scheduler:
@@ -327,6 +397,17 @@ class BaseTrainer(ABC):
     
     @rank_zero_only
     def save_checkpoint(self, valid_loss, prefix='ckpt'):
+        """
+        Save training checkpoint (only on rank 0).
+        
+        Saves model state, optimizer state, scheduler state, and training progress.
+        Manages checkpoint rotation to keep only the last k checkpoints.
+        
+        Args:
+            valid_loss (float, optional): Validation loss to include in filename.
+            prefix (str, optional): Checkpoint prefix ('ckpt', 'best', or 'last').
+                Defaults to 'ckpt'.
+        """
         ckpt_save_dir = os.path.join(self.config.output_dir, 'checkpoints')
         if not os.path.exists(ckpt_save_dir):
             os.makedirs(ckpt_save_dir)
@@ -350,6 +431,17 @@ class BaseTrainer(ABC):
         logging.info(f'Saved checkpoint to {save_path} ...')
             
     def _save_checkpoint(self, ckpt_save_dir, valid_loss, prefix):
+        """
+        Internal method to save checkpoint to disk.
+        
+        Args:
+            ckpt_save_dir (str): Directory to save checkpoint.
+            valid_loss (float, optional): Validation loss for filename.
+            prefix (str): Checkpoint prefix.
+        
+        Returns:
+            Path: Path to saved checkpoint file.
+        """
         checkpoint = {
             'model_state_dict': self.actual_model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
@@ -422,7 +514,16 @@ class BaseTrainer(ABC):
         }
     
     def _train_epoch(self) -> float:
-        """Train for one epoch."""
+        """
+        Train the model for one epoch.
+        
+        Performs forward pass, backward pass, gradient accumulation, and
+        optimizer updates for all batches in the training dataloader.
+        Supports mixed precision training if enabled.
+        
+        Returns:
+            float: Average training loss for the epoch.
+        """
         self.model.train()
         # zero grad at the begining to prevent checkpoint
         self.optimizer.zero_grad()
@@ -477,6 +578,13 @@ class BaseTrainer(ABC):
         return loss
     
     def _optimizer_step(self):
+        """
+        Perform optimizer step with gradient clipping and scaling.
+        
+        Applies gradient clipping if max_grad_norm > 0, then performs
+        optimizer step with appropriate scaling for mixed precision training.
+        Also increments global_step counter.
+        """
         # Gradient clipping
         if self.config.max_grad_norm > 0:
             if self.use_amp:
@@ -525,7 +633,16 @@ class BaseTrainer(ABC):
 
     @rank_zero_only
     def _should_early_stop(self):
-        """Check if early stopping should be performed."""
+        """
+        Check if early stopping should be performed.
+        
+        Evaluates whether training should stop early based on patience counter
+        and early stopping configuration. Only evaluated on rank 0 in distributed
+        training to ensure consistent behavior.
+        
+        Returns:
+            bool: True if early stopping should be triggered, False otherwise.
+        """
         if not self.config.enable_early_stopping:
             return False
 
@@ -533,6 +650,19 @@ class BaseTrainer(ABC):
             return True
 
     def _should_log_train(self, location='epoch') -> bool:
+        """
+        Check if training metrics should be logged at the current location.
+        
+        Determines whether to log training metrics based on configured
+        logging strategies (epoch-based or step-based) and current progress.
+        
+        Args:
+            location (str, optional): Location to check ('epoch' or 'step').
+                Defaults to 'epoch'.
+        
+        Returns:
+            bool: True if logging should occur, False otherwise.
+        """
         if not self.logging_strategies:
             return False
         elif (StrategyType.EPOCHS in self.logging_strategies) and (location == 'epoch'):
@@ -545,7 +675,19 @@ class BaseTrainer(ABC):
         return False
     
     def _should_eval(self, location='epoch') -> bool:
-        """Check if evaluation should be performed."""
+        """
+        Check if evaluation should be performed at the current location.
+        
+        Determines whether to run evaluation based on configured evaluation
+        strategies (epoch-based or step-based) and current progress.
+        
+        Args:
+            location (str, optional): Location to check ('epoch' or 'step').
+                Defaults to 'epoch'.
+        
+        Returns:
+            bool: True if evaluation should occur, False otherwise.
+        """
         if not self.eval_strategies:
             return False
         elif (StrategyType.EPOCHS in self.eval_strategies) and (location == 'epoch'):
@@ -558,7 +700,19 @@ class BaseTrainer(ABC):
         return False
     
     def _should_save(self, location='step') -> bool:
-        """Check if checkpoint should be saved."""
+        """
+        Check if checkpoint should be saved at the current location.
+        
+        Determines whether to save a checkpoint based on configured save
+        strategies (epoch-based or step-based) and current progress.
+        
+        Args:
+            location (str, optional): Location to check ('epoch' or 'step').
+                Defaults to 'step'.
+        
+        Returns:
+            bool: True if checkpoint should be saved, False otherwise.
+        """
         if not self.save_strategies:
             return False
         elif (StrategyType.EPOCHS in self.save_strategies) and (location == 'epoch'):
@@ -572,7 +726,19 @@ class BaseTrainer(ABC):
     
     @rank_zero_only
     def _is_best_model(self, metric: float) -> bool:
-        """Check if the current model is the best so far."""
+        """
+        Check if the current model is the best so far.
+        
+        Compares the current metric value against the best metric seen so far,
+        considering whether higher or lower values are better based on configuration.
+        Only evaluated on rank 0 in distributed training.
+        
+        Args:
+            metric (float): Current metric value to compare.
+        
+        Returns:
+            bool: True if current metric is better than best_metric, False otherwise.
+        """
         if self.config.greater_is_better:
             return metric > self.best_metric
         else:
@@ -580,7 +746,16 @@ class BaseTrainer(ABC):
     
     @rank_zero_only
     def _log_metrics(self, timestamp, metrics: Dict[str, Any]):
-        """Log metrics to various backends."""
+        """
+        Log metrics to various backends (e.g., TensorBoard).
+        
+        Writes metrics to configured logging backends. Currently supports
+        TensorBoard. Only logs on rank 0 in distributed training.
+        
+        Args:
+            timestamp (int): Timestamp for the metrics (epoch or step number).
+            metrics (Dict[str, Any]): Dictionary of metric names to values.
+        """
         # log to tensorboard
         if self.writer:
             for k, v in metrics.items():
@@ -591,8 +766,19 @@ class BaseTrainer(ABC):
         """
         Evaluate the model on the evaluation dataset.
         
+        Runs the model in evaluation mode over the entire evaluation dataset,
+        computing all configured metrics. Supports distributed evaluation with
+        metric synchronization across devices.
+        
+        Args:
+            sync_score (bool, optional): Whether to synchronize metrics across
+                devices in distributed training. Defaults to False.
+        
         Returns:
-            Dictionary containing evaluation metrics
+            Dict[str, float]: Dictionary mapping metric names to their average values.
+        
+        Raises:
+            ValueError: If no evaluation dataset is provided.
         """
         if self.eval_dataloader is None:
             raise ValueError("No evaluation dataset provided")
@@ -640,6 +826,16 @@ class BaseTrainer(ABC):
         return total_loss_dict
     
     def on_batch_end(self, loss_val):
+        """
+        Callback executed at the end of each training batch.
+        
+        Handles logging, evaluation, checkpointing, and progress bar updates
+        at the batch level. Checks configured strategies to determine which
+        actions to perform.
+        
+        Args:
+            loss_val (float): Loss value for the current batch.
+        """
         # Log training step
         if self._should_log_train(location='step'):
             if self.config.sync_loss:
@@ -674,6 +870,16 @@ class BaseTrainer(ABC):
         self._log_to_progress_bar(self.progress_bar_metrics)
         
     def on_epoch_end(self, loss_val):
+        """
+        Callback executed at the end of each training epoch.
+        
+        Handles logging, evaluation, checkpointing, early stopping checks,
+        and progress bar updates at the epoch level. Manages best model
+        tracking and patience counter for early stopping.
+        
+        Args:
+            loss_val (float): Average loss value for the completed epoch.
+        """
         if self._should_log_train(location='epoch'):
             if self.config.sync_loss:
                 # we sync loss step at each logging step
@@ -726,7 +932,16 @@ class BaseTrainer(ABC):
         
     def _sync_metric(self, metric: Union[float, torch.Tensor]) -> float:
         """
-        sync metric for all devices
+        Synchronize metric across all devices in distributed training.
+        
+        Averages the metric value across all processes in distributed training
+        using all_reduce. In single-process mode, returns the metric as-is.
+        
+        Args:
+            metric (Union[float, torch.Tensor]): Metric value to synchronize.
+        
+        Returns:
+            float: Synchronized (averaged) metric value.
         """
         if not torch.is_tensor(metric):
             metric = torch.tensor(metric, device=self.device)
@@ -742,6 +957,20 @@ class BaseTrainer(ABC):
     
     @rank_zero_only
     def _save_eval_results(self, results: dict, batch_idx: int):
+        """
+        Save evaluation results for a batch to disk.
+        
+        Saves evaluation results including predictions, ground truth, and metrics
+        for later analysis. Manages rotation to keep only the top-k most recent
+        evaluation results. Only saves on rank 0 in distributed training.
+        
+        Args:
+            results (dict): Dictionary containing evaluation results:
+                - predictions: Model predictions
+                - batch data: Input batch data
+                - metrics: Computed metrics
+            batch_idx (int): Index of the batch being saved.
+        """
         save_dir = os.path.join(self.config.output_dir, 'evaluation')
         # check and remove the oldest save file
         files = sorted(glob(os.path.join(save_dir, 'batch_*.pkl')), key=os.path.getctime)
@@ -761,11 +990,30 @@ class BaseTrainer(ABC):
         torch.save(results, file_path)
     
     def _log_to_progress_bar(self, metrics: Dict[str, float]):
+        """
+        Update the progress bar with current metrics.
+        
+        Updates the tqdm progress bar's postfix with the provided metrics
+        for real-time monitoring during training.
+        
+        Args:
+            metrics (Dict[str, float]): Dictionary of metric names to values
+                to display in the progress bar.
+        """
         if self.current_progress_bar is not None:
             self.current_progress_bar.set_postfix(metrics)
     
     @property
     def train_sampler(self):
+        """
+        Get the training data sampler.
+        
+        Returns the sampler used by the training dataloader, which may be
+        a DistributedSampler in distributed training or None for standard shuffling.
+        
+        Returns:
+            Optional[Sampler]: The training sampler, or None if not using a sampler.
+        """
         if hasattr(self.train_dataloader, 'sampler') and self.train_dataloader.sampler is not None:
             return self.train_dataloader.sampler
         return None

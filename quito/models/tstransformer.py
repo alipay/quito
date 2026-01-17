@@ -13,7 +13,22 @@ from quito.metrics import get_metric_fn, cal_score
 
 
 class MultiHeadAttention(nn.Module):
-    """Multi-head attention with GQA supported"""
+    """
+    Multi-head attention with Grouped Query Attention (GQA) support.
+    
+    Implements multi-head self-attention with optional grouped query attention
+    for efficiency. GQA reduces the number of key-value heads while keeping
+    query heads, reducing memory and computation.
+    
+    Args:
+        d_model (int): Model dimension.
+        n_heads (int): Number of query heads.
+        num_groups (int, optional): Number of key-value groups for GQA.
+            If None, uses standard multi-head attention. Defaults to None.
+        d_k (int, optional): Key dimension per head. Defaults to d_model // n_heads.
+        d_v (int, optional): Value dimension per head. Defaults to d_model // n_heads.
+        attn_dropout (float): Attention dropout rate. Defaults to 0.0.
+    """
     def __init__(self, d_model, n_heads, num_groups=None, d_k=None, d_v=None, attn_dropout=0.0, **kwargs):
         super().__init__()
         self.d_model = d_model
@@ -32,6 +47,19 @@ class MultiHeadAttention(nn.Module):
         self.attn_dropout = nn.Dropout(attn_dropout)
 
     def forward(self, q, k, v, mask=None):
+        """
+        Compute multi-head attention.
+        
+        Args:
+            q (torch.Tensor): Query tensor of shape (batch_size, q_len, d_model).
+            k (torch.Tensor): Key tensor of shape (batch_size, k_len, d_model).
+            v (torch.Tensor): Value tensor of shape (batch_size, v_len, d_model).
+            mask (torch.Tensor, optional): Attention mask. Can be 2D (l, s) or
+                3D (b, l, s). Positions with mask=1 are masked. Defaults to None.
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, q_len, d_model).
+        """
         b, l, d_model = q.shape
         _, s, _ = k.shape
         q = self.proj_q(q).view(b, l, self.n_heads, self.d_k) # b, l, h, d
@@ -68,7 +96,29 @@ class MultiHeadAttention(nn.Module):
         
 
 class TransformerEncoderLayer(nn.Module):
-    """transformer encoder layer, input x and perform MHA"""
+    """
+    Transformer encoder layer with alternating time and feature attention.
+    
+    Supports two types of attention layers:
+    - 'time': Attention along the time dimension
+    - 'feature': Attention along the feature dimension
+    
+    Args:
+        layer_type (str): Type of layer ('time' or 'feature').
+        attn_type (str): Attention type ('full', 'causal', or 'cross').
+        d_model (int): Model dimension.
+        d_ff (int): Feed-forward dimension.
+        act (nn.Module): Activation function class.
+        n_heads (int): Number of attention heads.
+        num_groups (int, optional): Number of groups for GQA.
+        d_k (int, optional): Key dimension per head.
+        d_v (int, optional): Value dimension per head.
+        attn_dropout (float): Attention dropout rate.
+        pre_norm (bool): Whether to use pre-normalization.
+        norm_type (str): Normalization type ('LayerNorm' or 'RMSNorm').
+        rope (bool): Whether to use RoPE (not implemented).
+        dropout (float): General dropout rate.
+    """
     def __init__(self, 
                  layer_type='time',
                  attn_type='full',
@@ -114,6 +164,18 @@ class TransformerEncoderLayer(nn.Module):
         )
 
     def forward(self, x, split_point=None, mask=None):
+        """
+        Forward pass through encoder layer.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, seq_len, d_model).
+            split_point (int, optional): Split point for cross-attention.
+                Required if attn_type='cross'. Defaults to None.
+            mask (torch.Tensor, optional): Attention mask. Defaults to None.
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, seq_len, d_model).
+        """
         b, l, d_model = x.shape 
         layer_attn_mask = self.build_mask_from_layer(x, split_point)
         if mask:
@@ -138,6 +200,16 @@ class TransformerEncoderLayer(nn.Module):
         return x
     
     def build_mask_from_layer(self, x, split_point=None):
+        """
+        Build attention mask based on layer type and attention type.
+        
+        Args:
+            x (torch.Tensor): Input tensor for shape inference.
+            split_point (int, optional): Split point for cross-attention.
+        
+        Returns:
+            torch.Tensor: Attention mask of shape (batch_size, seq_len, seq_len).
+        """
         b, l, d_model = x.shape 
         if self.attn_type == 'full':
             mask = torch.zeros(b, l, l) # no mask, full attention
@@ -160,7 +232,29 @@ class TransformerEncoderLayer(nn.Module):
         return mask.to(x.device)
 
 class TransformerEncoder(nn.Module):
-    """Transformer encoder block for multiple transformer layers"""
+    """
+    Transformer encoder block with alternating time and feature attention layers.
+    
+    Processes patched time series data by alternating between time-dimension
+    and feature-dimension attention, enabling the model to capture both temporal
+    and cross-feature dependencies.
+    
+    Args:
+        layers (list): List of layer specifications in format 'type_attn'
+            (e.g., 'time_full', 'feature_full').
+        d_model (int): Model dimension.
+        d_ff (int): Feed-forward dimension.
+        act (nn.Module): Activation function class.
+        n_heads (int): Number of attention heads.
+        num_groups (int, optional): Number of groups for GQA.
+        d_k (int, optional): Key dimension per head.
+        d_v (int, optional): Value dimension per head.
+        attn_dropout (float): Attention dropout rate.
+        pre_norm (bool): Whether to use pre-normalization.
+        rope (bool): Whether to use RoPE.
+        norm_type (str): Normalization type.
+        dropout (float): General dropout rate.
+    """
     def __init__(self,
                  layers,
                  d_model=512, 
@@ -202,6 +296,17 @@ class TransformerEncoder(nn.Module):
         self.module_lst = nn.ModuleList(module_lst)
 
     def forward(self, x, split_point=None, mask=None):
+        """
+        Forward pass through encoder layers.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, n_patches, n_features, d_model).
+            split_point (int, optional): Split point for cross-attention.
+            mask (torch.Tensor, optional): Attention mask.
+        
+        Returns:
+            torch.Tensor: Encoded output of shape (batch_size, n_patches, n_features, d_model).
+        """
         B, L, C, D = x.shape
         for layer in self.module_lst:
             if layer.layer_type == 'time':
@@ -216,6 +321,16 @@ class TransformerEncoder(nn.Module):
 
 
 class SubspacePositionEncoder(nn.Module):
+    """
+    Subspace-based positional encoder for features.
+    
+    Generates random embeddings for each feature and projects them to
+    the model dimension. Provides feature-specific positional information.
+    
+    Args:
+        d_model (int): Model dimension.
+        num_subspace (int, optional): Number of subspaces. Defaults to 8.
+    """
     def __init__(self, d_model, num_subspace=8):
         super().__init__()
         self.d_model = d_model
@@ -224,6 +339,16 @@ class SubspacePositionEncoder(nn.Module):
         self.seed = 16
     
     def forward(self, x, y):
+        """
+        Apply subspace positional encoding.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, n_features, n_patches, d_model).
+            y (torch.Tensor): Target tensor of shape (batch_size, n_features, n_patches, d_model).
+        
+        Returns:
+            tuple: (x_encoded, y_encoded) with positional encodings added.
+        """
         B, C, n_P, d_model = x.shape
         # B, C, n_P, d_model
         positional_embedding_rng = torch.Generator(device=x.device).manual_seed(
@@ -244,7 +369,15 @@ class SubspacePositionEncoder(nn.Module):
 
 class LearnedPositionalEncoder(nn.Module):
     """
-    Learned positional encoder for the input sequence
+    Learned positional encoder for time or feature dimensions.
+    
+    Uses learnable embeddings to encode positional information along
+    either the time dimension or feature dimension.
+    
+    Args:
+        num_embeddings (int): Number of positions to encode.
+        d_model (int): Model dimension.
+        how (str): Dimension to encode ('time' or 'feature'). Defaults to 'time'.
     """
     def __init__(self, num_embeddings, d_model, how='time'):
         super().__init__()
@@ -252,6 +385,16 @@ class LearnedPositionalEncoder(nn.Module):
         self.how = how
     
     def forward(self, x, y):
+        """
+        Apply learned positional encoding.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, n_features, n_patches, d_model).
+            y (torch.Tensor): Target tensor of shape (batch_size, n_features, n_patches, d_model).
+        
+        Returns:
+            tuple: (x_encoded, y_encoded) with positional encodings added.
+        """
         # B, C, n_P, d_model
         B, C, n_P, d_model = x.shape
         _, _, n_P_y, _ = y.shape
@@ -275,14 +418,30 @@ class LearnedPositionalEncoder(nn.Module):
 
 class IndexPostionEncoder(nn.Module):
     """
-    Embed index relative positional information against the first token of target to the series, 
-    adopted from CHRONOS-v2
+    Index-based positional encoder (adopted from CHRONOS-v2).
+    
+    Encodes relative positional information by using index positions
+    normalized by max_context_len. Provides relative position information
+    for both input and target sequences.
+    
+    Args:
+        max_context_len (int): Maximum context length for normalization.
     """
     def __init__(self, max_context_len):
         super().__init__()
         self.max_context_len = max_context_len
 
     def forward(self, x, y):
+        """
+        Apply index-based positional encoding.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, n_features, seq_len).
+            y (torch.Tensor): Target tensor of shape (batch_size, n_features, seq_len).
+        
+        Returns:
+            tuple: (x_encoded, y_encoded) with index-based positional encodings added.
+        """
         # B, C, L
         L_x = x.shape[2]
         L_y = y.shape[2]
@@ -298,7 +457,21 @@ class IndexPostionEncoder(nn.Module):
 
 class PatchPositionEmbedder(nn.Module):
     """
-    Perform positional embedding for the input patched data
+    Positional embedder for patched time series data.
+    
+    Applies positional encoding at both time and feature dimensions
+    for patched time series. Supports different encoding strategies for
+    each dimension.
+    
+    Args:
+        patch_size (int): Size of each patch.
+        time_pe_type (str, optional): Time positional encoding type
+            ('learned' or None). Defaults to None.
+        feature_pe_type (str): Feature positional encoding type
+            ('subspace', 'learned', or None). Defaults to 'subspace'.
+        d_model (int): Model dimension. Defaults to 512.
+        max_context_len (int): Maximum context length. Defaults to 6000.
+        max_features (int): Maximum number of features. Defaults to 200.
     """
     def __init__(self, patch_size, time_pe_type, feature_pe_type='subspace', d_model=512, max_context_len=6000, max_features=200, **kwargs):
         super().__init__()
@@ -315,6 +488,16 @@ class PatchPositionEmbedder(nn.Module):
             self.time_pe = None
 
     def forward(self, x, y):
+        """
+        Apply positional encoding to patched data.
+        
+        Args:
+            x (torch.Tensor): Input patches of shape (batch_size, n_features, n_patches, d_model).
+            y (torch.Tensor): Target patches of shape (batch_size, n_features, n_patches, d_model).
+        
+        Returns:
+            tuple: (x_encoded, y_encoded) with positional encodings added.
+        """
         # input is patched, including masking
         B, C_x, n_P_x, D = x.shape # B, num_patch, patch_size, C
         _, _, n_P_y, _ = y.shape
@@ -329,7 +512,17 @@ class PatchPositionEmbedder(nn.Module):
 
 class FlattenHead(nn.Module):
     """
-    For each forecast_horizon patch, project d_model -> patch_size -> quantiles 
+    Flatten head for generating forecasts from patch embeddings.
+    
+    Projects patch embeddings to forecast values. For each patch in the
+    forecast horizon, projects from d_model to patch_size, optionally
+    generating quantile predictions.
+    
+    Args:
+        d_model (int): Model dimension.
+        patch_size (int): Size of each patch.
+        quantiles (int, optional): Number of quantiles to predict.
+            Defaults to 1 (point forecast).
     """
     def __init__(self, d_model, patch_size,quantiles: int = 1):
         super().__init__()
@@ -340,6 +533,15 @@ class FlattenHead(nn.Module):
         self.decoder = nn.Linear(d_model, patch_size * quantiles)
 
     def forward(self, x):
+        """
+        Generate forecasts from patch embeddings.
+        
+        Args:
+            x (torch.Tensor): Patch embeddings of shape (batch_size, n_patches, n_features, d_model).
+        
+        Returns:
+            torch.Tensor: Forecasts of shape (batch_size, forecast_horizon, n_features, quantiles).
+        """
         B, n_P, C, D = x.shape
         x = self.decoder(x.permute(0, 2, 1, 3)) # B, C, n_P, P * q
         x = rearrange(x, 'b c n (p q) -> b c (n p) q', n=n_P, p=self.patch_size, q=self.quantiles)
@@ -368,6 +570,41 @@ class CEHead(nn.Module):
         
 
 class Transformer(nn.Module):
+    """
+    Time Series Transformer with alternating time and feature attention.
+    
+    Processes time series using patch-based encoding and alternating
+    attention layers along time and feature dimensions. Supports missing
+    value handling, target masking, and various positional encodings.
+    
+    Architecture:
+    1. Point-wise embedding and positional encoding
+    2. Patch embedding
+    3. Patch-level positional encoding
+    4. Alternating time/feature attention encoder
+    5. Flatten head for forecasting
+    
+    Args:
+        layers (list): List of layer types ('time_full', 'feature_full', etc.).
+        patch_size (int): Size of patches.
+        time_pe_type (str): Time positional encoding type.
+        feature_pe_type (str): Feature positional encoding type.
+        d_model (int): Model dimension.
+        d_ff (int): Feed-forward dimension.
+        act (str): Activation function name.
+        n_heads (int): Number of attention heads.
+        num_groups (int, optional): Number of groups for GQA.
+        d_k (int, optional): Key dimension per head.
+        d_v (int, optional): Value dimension per head.
+        attn_dropout (float): Attention dropout rate.
+        pre_norm (bool): Whether to use pre-normalization.
+        norm_type (str): Normalization type.
+        rope (bool): Whether to use RoPE.
+        dropout (float): General dropout rate.
+        max_context_len (int): Maximum context length.
+        max_features (int): Maximum number of features.
+        revin (bool): Whether to use RevIN normalization.
+    """
     def __init__(self,
                  layers,
                  patch_size=8,
@@ -429,6 +666,22 @@ class Transformer(nn.Module):
         self.head = FlattenHead(d_model=d_model, patch_size=patch_size, quantiles=1)
 
     def forward(self, x, y, x_mark=None, y_mark=None):
+        """
+        Forward pass for time series forecasting.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, lookback_win, n_features).
+            y (torch.Tensor): Target time series of shape (batch_size, forecast_horizon, n_targets).
+                Will be replaced with zeros internally.
+            x_mark (torch.Tensor, optional): Time features (not used). Defaults to None.
+            y_mark (torch.Tensor, optional): Time features (not used). Defaults to None.
+        
+        Returns:
+            tuple: (forecasts, mean, std) where:
+                - forecasts: Forecasts of shape (batch_size, forecast_horizon, n_targets, 1)
+                - mean: Mean used for normalization
+                - std: Std used for normalization
+        """
         B, lookback_win, C = x.shape
         # We now only support MS, S, no covariates, the input y will be replaced by zeros
         _, forecast_horizon, num_targets = y.shape
@@ -536,7 +789,33 @@ class Transformer(nn.Module):
         
 
 class TSTransformer(TimeSeriesModel):
+    """
+    Time Series Transformer model wrapper for QuitoBench.
+    
+    TSTransformer applies transformer architecture to time series with alternating
+    time and feature attention layers. This enables the model to capture both
+    temporal dependencies and cross-feature relationships.
+    
+    Key features:
+    - Alternating time and feature attention
+    - Patch-based processing
+    - Support for missing values and target masking
+    - Multiple positional encoding strategies
+    - Optional RevIN normalization
+    
+    Reference:
+        Original implementation adapted for time series forecasting.
+    """
     def __init__(self, config: TSTransformerModelConfig, local_rank: int = -1):
+        """
+        Initialize the TSTransformer model.
+        
+        Args:
+            config (TSTransformerModelConfig): Model configuration containing
+                architecture parameters (layers, patch_size, d_model, etc.).
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+        """
         super().__init__(config, local_rank)
         self.model = Transformer(
                  layers=config.layers,
@@ -602,7 +881,21 @@ class TSTransformer(TimeSeriesModel):
         return score_dict, y_pred
 
     def _construct_model_input(self, x, y, x_mark, y_mark):
-        """ Construct decoder input using y for encoder-decoder framework """            
+        """
+        Construct decoder input for encoder-decoder framework.
+        
+        Creates a masked decoder input by replacing target values with zeros,
+        allowing the model to learn to predict from masked targets.
+        
+        Args:
+            x (torch.Tensor): Encoder input.
+            y (torch.Tensor): Target tensor.
+            x_mark (torch.Tensor, optional): Time features for encoder.
+            y_mark (torch.Tensor, optional): Time features for decoder.
+        
+        Returns:
+            tuple: (x, dec_in, x_mark, y_mark) where dec_in is masked target.
+        """
         dec_in = torch.zeros_like(y[:, -self.forecast_horizon:, :]) # mask target
 
         return x, dec_in, x_mark, y_mark

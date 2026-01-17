@@ -9,7 +9,14 @@ from quito.config.model import DLinearModelConfig
 
 class moving_avg(nn.Module):
     """
-    Moving average block to highlight the trend of time series
+    Moving average block to highlight the trend of time series.
+    
+    Applies average pooling with padding to extract trend components
+    from time series data.
+    
+    Args:
+        kernel_size (int): Size of the moving average window.
+        stride (int): Stride for the average pooling operation.
     """
     def __init__(self, kernel_size, stride):
         super(moving_avg, self).__init__()
@@ -17,6 +24,15 @@ class moving_avg(nn.Module):
         self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=stride, padding=0)
 
     def forward(self, x):
+        """
+        Apply moving average to input time series.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+        
+        Returns:
+            torch.Tensor: Trend component of shape (batch_size, seq_len, n_features).
+        """
         # padding on the both ends of time series
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
@@ -28,22 +44,62 @@ class moving_avg(nn.Module):
 
 class series_decomp(nn.Module):
     """
-    Series decomposition block
+    Series decomposition block.
+    
+    Decomposes time series into trend and seasonal (residual) components
+    using moving average.
+    
+    Args:
+        kernel_size (int): Kernel size for moving average decomposition.
     """
     def __init__(self, kernel_size):
         super(series_decomp, self).__init__()
         self.moving_avg = moving_avg(kernel_size, stride=1)
 
     def forward(self, x):
+        """
+        Decompose time series into seasonal and trend components.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+        
+        Returns:
+            tuple: (seasonal, trend) where:
+                - seasonal: Residual component (x - trend)
+                - trend: Moving average component
+        """
         moving_mean = self.moving_avg(x)
         res = x - moving_mean
         return res, moving_mean
 
 class DLinear(TimeSeriesModel):
     """
-    Decomposition-Linear
+    DLinear (Decomposition-Linear) model for QuitoBench.
+    
+    DLinear is a simple yet effective linear model that uses moving average
+    decomposition to separate trend and seasonal components, then applies
+    separate linear layers to each component.
+    
+    Key features:
+    - Moving average decomposition (trend + seasonal)
+    - Separate linear layers for trend and seasonal components
+    - Support for individual (per-channel) or shared linear layers
+    - Optional RevIN normalization
+    - Strong baseline for time series forecasting
+    
+    Reference:
+        Zeng et al. (2023). "Are Transformers Effective for Time Series Forecasting?"
     """
     def __init__(self,  config: DLinearModelConfig, local_rank: int = -1):
+        """
+        Initialize the DLinear model.
+        
+        Args:
+            config (DLinearModelConfig): Model configuration containing
+                architecture parameters (kernel_size, individual, revin, etc.).
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+        """
         super().__init__(config, local_rank)
         self.seq_len = config.seq_len
         self.pred_len = config.forecast_horizon
@@ -74,7 +130,24 @@ class DLinear(TimeSeriesModel):
             # self.Linear_Seasonal.weight = nn.Parameter((1/self.seq_len)*torch.ones([self.pred_len,self.seq_len]))
             # self.Linear_Trend.weight = nn.Parameter((1/self.seq_len)*torch.ones([self.pred_len,self.seq_len]))
 
-    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):           # x: [Batch, Input length, Channel]
+    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):
+        """
+        Forward pass for time series forecasting.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+            y (torch.Tensor, optional): Target tensor (not used by DLinear).
+                Defaults to None.
+            x_mark (torch.Tensor, optional): Time features (not used).
+                Defaults to None.
+            y_mark (torch.Tensor, optional): Time features (not used).
+                Defaults to None.
+            **kwargs: Additional arguments (not used).
+        
+        Returns:
+            torch.Tensor: Predicted time series of shape
+                (batch_size, forecast_horizon, n_features).
+        """
         # x: [Batch, Input length, Channel]
         if self.revin:
             # Normalization from Non-stationary Transformer

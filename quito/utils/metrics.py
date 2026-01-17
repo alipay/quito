@@ -5,16 +5,28 @@ from scipy.signal import find_peaks
 
 def detect_seasonality_fft(y, min_period=2, max_period=None, peak_threshold=0.1):
     """
-    Detect dominant seasonality period using FFT.
+    Detect dominant seasonality period using Fast Fourier Transform (FFT).
+    
+    Analyzes the frequency spectrum of a time series to identify the dominant
+    seasonal period. Uses FFT to compute frequency components and identifies
+    significant peaks within the valid period range.
     
     Args:
-        y: 1D array (L_t,)
-        min_period: minimum allowed period
-        max_period: maximum allowed period (default: L_t // 2)
-        peak_threshold: fraction of max amplitude to consider significant
+        y (np.ndarray): 1D time series array of shape (L_t,).
+        min_period (int, optional): Minimum allowed seasonal period. Defaults to 2.
+        max_period (int, optional): Maximum allowed seasonal period. If None,
+            defaults to L_t // 2. Defaults to None.
+        peak_threshold (float, optional): Fraction of maximum amplitude to consider
+            a peak significant (0.0 to 1.0). Defaults to 0.1.
     
     Returns:
-        m: int, detected period (>=2), or 1 if none found
+        int: Detected dominant period (>=2), or 1 if no significant seasonality
+            is found.
+            
+    Example:
+        >>> hourly_data = np.sin(2 * np.pi * np.arange(168) / 24)  # 24-hour cycle
+        >>> period = detect_seasonality_fft(hourly_data, min_period=2, max_period=48)
+        >>> print(f"Detected period: {period} hours")  # Should detect 24
     """
     y = np.asarray(y)
     L = len(y)
@@ -61,8 +73,27 @@ def detect_seasonality_fft(y, min_period=2, max_period=None, peak_threshold=0.1)
 
 def compute_naive_mae(y_train, m=1):
     """
-    Compute MAE of (seasonal) naive forecast on training data.
-    Returns scalar.
+    Compute Mean Absolute Error of naive or seasonal naive forecast.
+    
+    Calculates the MAE of a naive baseline forecast on the training data.
+    For m=1, uses simple naive forecast (last value). For m>1, uses seasonal
+    naive forecast (value from m steps ago). This metric is commonly used
+    as a baseline for evaluating time series models.
+    
+    Args:
+        y_train (np.ndarray): Training time series data.
+        m (int, optional): Seasonal period. Use 1 for simple naive forecast,
+            or >1 for seasonal naive forecast (e.g., 24 for hourly data with
+            daily seasonality). Defaults to 1.
+    
+    Returns:
+        float: Mean Absolute Error of the naive forecast. Returns 1.0 as
+            fallback if insufficient data.
+            
+    Example:
+        >>> y_train = np.array([10, 12, 11, 13, 12, 14])
+        >>> mae_naive = compute_naive_mae(y_train, m=1)
+        >>> mae_seasonal = compute_naive_mae(y_train, m=3)  # 3-step seasonal
     """
     y_train = np.asarray(y_train)
     if m == 1:

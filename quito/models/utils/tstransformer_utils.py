@@ -6,16 +6,22 @@ def masked_std(x, mask, dim=None, keepdim=False, unbiased=True):
     Compute the standard deviation of x over specified dimensions, 
     considering only the elements where mask is True.
 
+    Computes standard deviation while ignoring masked (False) elements.
+    Useful for handling missing values in time series data.
+
     Args:
-        x (Tensor): Input tensor of shape [...]
-        mask (BoolTensor or Tensor): Boolean mask broadcastable to x;
-                                    True indicates valid/Included element.
-        dim (int or tuple): Dimension(s) to reduce over
-        keepdim (bool): Whether to keep reduced dimensions
-        unbiased (bool): Whether to use Bessel's correction (n -> n-1)
+        x (torch.Tensor): Input tensor of shape [...]
+        mask (torch.BoolTensor or torch.Tensor): Boolean mask broadcastable to x;
+            True indicates valid/included element, False indicates masked/ignored.
+        dim (int or tuple, optional): Dimension(s) to reduce over.
+            Defaults to None (reduce over all dimensions).
+        keepdim (bool, optional): Whether to keep reduced dimensions.
+            Defaults to False.
+        unbiased (bool, optional): Whether to use Bessel's correction (n -> n-1).
+            Defaults to True.
 
     Returns:
-        Tensor: Standard deviation over masked input
+        torch.Tensor: Standard deviation over masked input.
     """
     mask = mask.bool()
 
@@ -51,15 +57,21 @@ def masked_mean(x, mask, dim=None, keepdim=False):
     """
     Compute mean over masked elements.
     
+    Computes mean while ignoring masked (False) elements. Useful for handling
+    missing values in time series data.
+    
     Args:
-        x: Tensor of shape [B, ..., L, ...]
-        mask: Boolean or binary tensor broadcastable to x.shape[-len(mask.shape):]
-              True/1 means *include*, False/0 means *ignore*
-        dim: dimension(s) to reduce over
-        keepdim: whether to keep reduced dims
+        x (torch.Tensor): Tensor of shape [B, ..., L, ...]
+        mask (torch.BoolTensor or torch.Tensor): Boolean or binary tensor
+            broadcastable to x.shape[-len(mask.shape):]. True/1 means include,
+            False/0 means ignore.
+        dim (int or tuple, optional): Dimension(s) to reduce over.
+            Defaults to None (reduce over all dimensions).
+        keepdim (bool, optional): Whether to keep reduced dimensions.
+            Defaults to False.
 
     Returns:
-        Mean-reduced tensor
+        torch.Tensor: Mean-reduced tensor over valid (masked) elements.
     """
     # Convert to boolean if needed
     mask = mask.bool()

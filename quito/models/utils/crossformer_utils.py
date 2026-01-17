@@ -7,9 +7,9 @@ from math import ceil, sqrt
 
 
 class FullAttention(nn.Module):
-    '''
+    """
     The Attention operation
-    '''
+    """
     def __init__(self, scale=None, attention_dropout=0.1):
         super(FullAttention, self).__init__()
         self.scale = scale
@@ -28,9 +28,9 @@ class FullAttention(nn.Module):
 
 
 class AttentionLayer(nn.Module):
-    '''
+    """
     The Multi-head Self-Attention (MSA) Layer
-    '''
+    """
     def __init__(self, d_model, n_heads, d_keys=None, d_values=None, dropout = 0.1):
         super(AttentionLayer, self).__init__()
 
@@ -64,10 +64,10 @@ class AttentionLayer(nn.Module):
         return self.out_projection(out)
 
 class TwoStageAttentionLayer(nn.Module):
-    '''
+    """
     The Two Stage Attention (TSA) Layer
     input/output shape: [batch_size, Data_dim(D), Seg_num(L), d_model]
-    '''
+    """
     def __init__(self, seg_num, factor, d_model, n_heads, d_ff = None, dropout=0.1):
         super(TwoStageAttentionLayer, self).__init__()
         d_ff = d_ff or 4*d_model
@@ -117,12 +117,12 @@ class TwoStageAttentionLayer(nn.Module):
         return final_out
 
 class SegMerging(nn.Module):
-    '''
+    """
     Segment Merging Layer.
     The adjacent `win_size' segments in each dimension will be merged into one segment to
     get representation of a coarser scale
     we set win_size = 2 in our paper
-    '''
+    """
     def __init__(self, d_model, win_size, norm_layer=nn.LayerNorm):
         super().__init__()
         self.d_model = d_model
@@ -151,11 +151,11 @@ class SegMerging(nn.Module):
         return x
 
 class scale_block(nn.Module):
-    '''
+    """
     We can use one segment merging layer followed by multiple TSA layers in each scale
     the parameter `depth' determines the number of TSA layers used in each scale
     We set depth = 1 in the paper
-    '''
+    """
     def __init__(self, win_size, d_model, n_heads, d_ff, depth, dropout, \
                     seg_num = 10, factor=10):
         super(scale_block, self).__init__()
@@ -183,9 +183,9 @@ class scale_block(nn.Module):
         return x
 
 class Encoder(nn.Module):
-    '''
+    """
     The Encoder of Crossformer.
-    '''
+    """
     def __init__(self, e_blocks, win_size, d_model, n_heads, d_ff, block_depth, dropout,
                 in_seg_num = 10, factor=10):
         super(Encoder, self).__init__()
@@ -226,9 +226,9 @@ class DSW_embedding(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    '''
+    """
     The decoder layer of Crossformer, each layer will make a prediction at its scale
-    '''
+    """
     def __init__(self, seg_len, d_model, n_heads, d_ff=None, dropout=0.1, out_seg_num = 10, factor = 10):
         super(DecoderLayer, self).__init__()
         self.self_attention = TwoStageAttentionLayer(out_seg_num, factor, d_model, n_heads, \
@@ -243,10 +243,10 @@ class DecoderLayer(nn.Module):
         self.linear_pred = nn.Linear(d_model, seg_len)
 
     def forward(self, x, cross):
-        '''
+        """
         x: the output of last decoder layer
         cross: the output of the corresponding encoder layer
-        '''
+        """
 
         batch = x.shape[0]
         x = self.self_attention(x)
@@ -268,9 +268,9 @@ class DecoderLayer(nn.Module):
         return dec_output, layer_predict
 
 class Decoder(nn.Module):
-    '''
+    """
     The decoder of Crossformer, making the final prediction by adding up predictions at each scale
-    '''
+    """
     def __init__(self, seg_len, d_layers, d_model, n_heads, d_ff, dropout,\
                 router=False, out_seg_num = 10, factor=10):
         super(Decoder, self).__init__()

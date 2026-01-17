@@ -26,10 +26,30 @@ def load_datasets(
     **kwargs
 ) -> Union[List[Dataset], Dataset]:
     """
-    Load time series datasets from parquets
+    Load time series datasets from parquet files based on configuration.
+    
+    This function creates dataset instances for the specified task and mode,
+    handling both pre-training and fine-tuning scenarios. Datasets can be
+    returned as a concatenated dataset or as a list of individual datasets.
+    
+    Args:
+        data_config (DataConfig): Configuration object containing dataset parameters
+            including sequence length, forecast horizon, data directory, etc.
+        task (TaskType): The task type (PRE_TRAIN, FINE_TUNE, or EVALUATE).
+        mode (ModeType): The mode (TRAIN, VAL, or TEST).
+        cleanup (bool, optional): Whether to cleanup/filter invalid data. Defaults to True.
+        concat (bool, optional): Whether to concatenate datasets into one. 
+            If False, returns list of datasets. Defaults to True.
+        **kwargs: Additional keyword arguments passed to dataset constructors.
     
     Returns:
-        ConcatedDataset
+        Union[List[Dataset], Dataset]: Either a concatenated PyTorch Dataset or 
+            a list of individual Dataset objects. Returns None if no datasets match criteria.
+            
+    Example:
+        >>> data_config = DataConfig(...)
+        >>> train_ds = load_datasets(data_config, TaskType.FINE_TUNE, ModeType.TRAIN)
+        >>> print(f"Training samples: {len(train_ds)}")
     """
     ds_lst = []
 
@@ -69,14 +89,27 @@ def load_datasets(
 
 def get_dataset(data_config: DataConfig, task: TaskType = TaskType.FINE_TUNE) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
     """
-    Get train, validation, and test datasets.
+    Get train, validation, and test datasets for a given task.
+    
+    Convenience function that loads all three dataset splits (train, validation, test)
+    in a single call. Each dataset is loaded according to the task type and data configuration.
     
     Args:
-        data_config: Data configuration
-        task: Task type (default: FINE_TUNE)
+        data_config (DataConfig): Data configuration object containing all dataset parameters.
+        task (TaskType, optional): The task type (PRE_TRAIN, FINE_TUNE, or EVALUATE). 
+            Defaults to TaskType.FINE_TUNE.
         
     Returns:
-        Tuple of (train_ds, val_ds, test_ds)
+        Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]: A tuple containing:
+            - train_ds: Training dataset (or None if not available)
+            - val_ds: Validation dataset (or None if not available)
+            - test_ds: Test dataset (or None if not available)
+            
+    Example:
+        >>> data_config = DataConfig(...)
+        >>> train_ds, val_ds, test_ds = get_dataset(data_config, TaskType.FINE_TUNE)
+        >>> if train_ds:
+        ...     print(f"Training samples: {len(train_ds)}")
     """
     train_ds = load_datasets(data_config, task, ModeType.TRAIN)
     val_ds = load_datasets(data_config, task, ModeType.VALID)
@@ -86,6 +119,29 @@ def get_dataset(data_config: DataConfig, task: TaskType = TaskType.FINE_TUNE) ->
     
 
 def load_dataloader(ds: ConcatDataset, data_config: DataConfig):
+    """
+    Create a DataLoader from a concatenated dataset.
+    
+    Creates a TimeSeriesDataLoader with parameters from the data configuration,
+    including batch size, shuffling, number of workers, and memory pinning.
+    
+    Args:
+        ds (ConcatDataset): Concatenated PyTorch dataset containing time series samples.
+        data_config (DataConfig): Data configuration object containing:
+            - batch_size: Batch size for data loading
+            - shuffle: Whether to shuffle the data
+            - num_workers: Number of data loading workers
+            - pin_memory: Whether to pin memory for faster GPU transfer
+    
+    Returns:
+        TimeSeriesDataLoader: Configured data loader ready for training/evaluation.
+        
+    Example:
+        >>> train_ds = load_datasets(data_config, TaskType.FINE_TUNE, ModeType.TRAIN)
+        >>> train_loader = load_dataloader(train_ds, data_config)
+        >>> for batch in train_loader:
+        ...     # Process batch
+    """
     dl = TimeSeriesDataLoader(
         dataset=ds,
         batch_size=data_config.batch_size,
@@ -165,7 +221,22 @@ class TimeSeriesDataset(Dataset):
         self.init_data()
         
     def _process_time_features(self, ts_series: pd.Series) -> np.ndarray:
-        """Extract time features from datetime."""
+        """
+        Extract time features from datetime series.
+        
+        Extracts normalized time features including:
+        - Hour of day (0-23 normalized to 0-1)
+        - Day of week (0-6 normalized to 0-1)
+        - Day of month (1-31 normalized to 0-1)
+        - Month of year (1-12 normalized to 0-1)
+        
+        Args:
+            ts_series (pd.Series): Pandas Series with datetime dtype.
+        
+        Returns:
+            np.ndarray: Array of shape (len(ts_series), 4) containing normalized
+                time features.
+        """
         features = []
         # Hour of day (normalized to [0, 1])
         features.append(ts_series.dt.hour / 23.0)
@@ -262,7 +333,19 @@ class TimeSeriesDataset(Dataset):
         return out_dict
     
     def inverse_transform(self, data: np.ndarray) -> np.ndarray:
-        """Inverse transform scaled data back to original scale."""
+        """
+        Inverse transform normalized data back to original scale.
+        
+        If normalization was applied during initialization, this method
+        reverses the normalization by multiplying by std and adding mean.
+        
+        Args:
+            data (np.ndarray): Normalized data to transform back.
+        
+        Returns:
+            np.ndarray: Data in original scale (if normalize=True) or
+                unchanged (if normalize=False).
+        """
         if self.normalize:
             return data * self.std + self.mean
         
@@ -412,7 +495,20 @@ class TimeSeriesDataLoader(DataLoader):
     """
     Wrapper around PyTorch DataLoader for time series data.
     
-    This is a convenience class that sets sensible defaults for time series.
+    This is a convenience class that sets sensible defaults for time series
+    data loading, including memory pinning for faster GPU transfer.
+    
+    Args:
+        dataset (ConcatDataset): Concatenated dataset to load from.
+        batch_size (int, optional): Batch size. Defaults to 32.
+        shuffle (bool, optional): Whether to shuffle data. Defaults to True.
+        num_workers (int, optional): Number of data loading workers.
+            Defaults to 0 (single-threaded).
+        pin_memory (bool, optional): Whether to pin memory for GPU transfer.
+            Defaults to True.
+        drop_last (bool, optional): Whether to drop last incomplete batch.
+            Defaults to False.
+        **kwargs: Additional arguments passed to PyTorch DataLoader.
     """
     
     def __init__(
@@ -425,7 +521,18 @@ class TimeSeriesDataLoader(DataLoader):
         drop_last: bool = False,
         **kwargs
     ):
-        """Initialize the data loader."""
+        """
+        Initialize the time series data loader.
+        
+        Args:
+            dataset (ConcatDataset): Dataset to load from.
+            batch_size (int): Batch size for loading.
+            shuffle (bool): Whether to shuffle data.
+            num_workers (int): Number of loading workers.
+            pin_memory (bool): Whether to pin memory.
+            drop_last (bool): Whether to drop last batch.
+            **kwargs: Additional DataLoader arguments.
+        """
         super().__init__(
             dataset=dataset,
             batch_size=batch_size,

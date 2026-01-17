@@ -22,6 +22,20 @@ from quito.models.utils.patchtst_utils import (Transpose,
 
 
 class PatchTSTBackbone(nn.Module):
+    """
+    PatchTST backbone architecture.
+    
+    The core PatchTST model that processes time series by dividing them into patches,
+    applying transformer attention, and generating forecasts. Supports both channel-independent
+    and channel-mixing modes, with optional RevIN normalization.
+    
+    Architecture:
+    1. RevIN normalization (optional)
+    2. Patch extraction from time series
+    3. Transformer encoder (channel-independent)
+    4. Prediction head (flatten or pretrain)
+    5. RevIN denormalization (optional)
+    """
     def __init__(self, c_in:int, context_window:int, target_window:int, patch_len:int, stride:int, max_seq_len:Optional[int]=1024, 
                  n_layers:int=3, d_model=128, n_heads=16, d_k:Optional[int]=None, d_v:Optional[int]=None,
                  d_ff:int=256, norm:str='BatchNorm', attn_dropout:float=0., dropout:float=0., act:str="gelu", key_padding_mask:bool='auto',
@@ -66,7 +80,16 @@ class PatchTSTBackbone(nn.Module):
             self.head = Flatten_Head(self.individual, self.n_vars, self.head_nf, target_window, head_dropout=head_dropout)
         
     
-    def forward(self, z):                                                                   # z: [bs x nvars x seq_len]
+    def forward(self, z):
+        """
+        Forward pass of PatchTST backbone.
+        
+        Args:
+            z (torch.Tensor): Input time series of shape (batch_size, n_vars, seq_len).
+        
+        Returns:
+            torch.Tensor: Predicted time series of shape (batch_size, n_vars, target_window).
+        """
         # norm
         if self.revin: 
             z = z.permute(0,2,1)
@@ -97,6 +120,20 @@ class PatchTSTBackbone(nn.Module):
 
 
 class Flatten_Head(nn.Module):
+    """
+    Flatten head for PatchTST prediction.
+    
+    Converts patch embeddings to forecast predictions. Supports both shared
+    and individual (per-variable) prediction heads.
+    
+    Args:
+        individual (bool): If True, uses separate linear layers for each variable.
+            If False, uses a shared linear layer for all variables.
+        n_vars (int): Number of variables/channels.
+        nf (int): Input feature dimension (d_model * patch_num).
+        target_window (int): Forecast horizon length.
+        head_dropout (float, optional): Dropout rate for head. Defaults to 0.
+    """
     def __init__(self, individual, n_vars, nf, target_window, head_dropout=0):
         super().__init__()
         
@@ -116,7 +153,16 @@ class Flatten_Head(nn.Module):
             self.linear = nn.Linear(nf, target_window)
             self.dropout = nn.Dropout(head_dropout)
             
-    def forward(self, x):                                 # x: [bs x nvars x d_model x patch_num]
+    def forward(self, x):
+        """
+        Forward pass of flatten head.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, n_vars, d_model, patch_num).
+        
+        Returns:
+            torch.Tensor: Predictions of shape (batch_size, n_vars, target_window).
+        """
         if self.individual:
             x_out = []
             for i in range(self.n_vars):
@@ -133,7 +179,19 @@ class Flatten_Head(nn.Module):
         
         
     
-class TSTiEncoder(nn.Module):  #i means channel-independent
+class TSTiEncoder(nn.Module):
+    """
+    Channel-Independent Time Series Transformer Encoder.
+    
+    The 'i' stands for channel-independent, meaning each variable is processed
+    separately through the transformer. This enables the model to learn
+    variable-specific patterns while sharing the transformer architecture.
+    
+    Architecture:
+    1. Patch projection to d_model dimension
+    2. Positional encoding
+    3. Transformer encoder layers
+    """
     def __init__(self, c_in, patch_num, patch_len, max_seq_len=1024,
                  n_layers=3, d_model=128, n_heads=16, d_k=None, d_v=None,
                  d_ff=256, norm='BatchNorm', attn_dropout=0., dropout=0., act="gelu", store_attn=False,
@@ -162,8 +220,16 @@ class TSTiEncoder(nn.Module):  #i means channel-independent
                                    pre_norm=pre_norm, activation=act, res_attention=res_attention, n_layers=n_layers, store_attn=store_attn)
 
         
-    def forward(self, x) -> Tensor:                                              # x: [bs x nvars x patch_len x patch_num]
+    def forward(self, x) -> Tensor:
+        """
+        Forward pass of channel-independent encoder.
         
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, n_vars, patch_len, patch_num).
+        
+        Returns:
+            torch.Tensor: Encoded tensor of shape (batch_size, n_vars, d_model, patch_num).
+        """
         n_vars = x.shape[1]
         # Input encoding
         x = x.permute(0,1,3,2)                                                   # x: [bs x nvars x patch_num x patch_len]
@@ -182,6 +248,28 @@ class TSTiEncoder(nn.Module):  #i means channel-independent
             
 # Cell
 class TSTEncoder(nn.Module):
+    """
+    Time Series Transformer Encoder.
+    
+    Stack of transformer encoder layers for processing patch sequences.
+    Supports residual attention for better gradient flow.
+    
+    Args:
+        q_len (int): Sequence length (number of patches).
+        d_model (int): Model dimension.
+        n_heads (int): Number of attention heads.
+        d_k (int, optional): Key dimension. Defaults to d_model // n_heads.
+        d_v (int, optional): Value dimension. Defaults to d_model // n_heads.
+        d_ff (int, optional): Feed-forward dimension.
+        norm (str): Normalization type ('BatchNorm' or 'LayerNorm').
+        attn_dropout (float): Attention dropout rate.
+        dropout (float): General dropout rate.
+        activation (str): Activation function.
+        res_attention (bool): Whether to use residual attention.
+        n_layers (int): Number of encoder layers.
+        pre_norm (bool): Whether to use pre-normalization.
+        store_attn (bool): Whether to store attention weights.
+    """
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=None, 
                         norm='BatchNorm', attn_dropout=0., dropout=0., activation='gelu',
                         res_attention=False, n_layers=1, pre_norm=False, store_attn=False):
@@ -194,6 +282,18 @@ class TSTEncoder(nn.Module):
         self.res_attention = res_attention
 
     def forward(self, src:Tensor, key_padding_mask:Optional[Tensor]=None, attn_mask:Optional[Tensor]=None):
+        """
+        Forward pass through encoder layers.
+        
+        Args:
+            src (torch.Tensor): Input tensor of shape (batch_size, q_len, d_model).
+            key_padding_mask (Optional[torch.Tensor]): Mask for padding positions.
+            attn_mask (Optional[torch.Tensor]): Attention mask.
+        
+        Returns:
+            torch.Tensor: Encoded output of shape (batch_size, q_len, d_model).
+            If res_attention=True, also returns attention scores.
+        """
         output = src
         scores = None
         if self.res_attention:
@@ -206,6 +306,18 @@ class TSTEncoder(nn.Module):
 
 
 class TSTEncoderLayer(nn.Module):
+    """
+    Single Time Series Transformer Encoder Layer.
+    
+    Standard transformer encoder layer with multi-head self-attention and
+    feed-forward network. Supports both pre-norm and post-norm configurations.
+    
+    Architecture:
+    1. Multi-head self-attention (with optional residual attention)
+    2. Add & Norm
+    3. Position-wise feed-forward network
+    4. Add & Norm
+    """
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=256, store_attn=False,
                  norm='BatchNorm', attn_dropout=0, dropout=0., bias=True, activation="gelu", res_attention=False, pre_norm=False):
         super().__init__()
@@ -242,7 +354,19 @@ class TSTEncoderLayer(nn.Module):
 
 
     def forward(self, src:Tensor, prev:Optional[Tensor]=None, key_padding_mask:Optional[Tensor]=None, attn_mask:Optional[Tensor]=None) -> Tensor:
-
+        """
+        Forward pass through encoder layer.
+        
+        Args:
+            src (torch.Tensor): Input tensor of shape (batch_size, q_len, d_model).
+            prev (Optional[torch.Tensor]): Previous attention scores (for residual attention).
+            key_padding_mask (Optional[torch.Tensor]): Mask for padding positions.
+            attn_mask (Optional[torch.Tensor]): Attention mask.
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, q_len, d_model).
+            If res_attention=True, also returns attention scores.
+        """
         # Multi-Head attention sublayer
         if self.pre_norm:
             src = self.norm_attn(src)
@@ -277,12 +401,31 @@ class TSTEncoderLayer(nn.Module):
 
 
 class _MultiheadAttention(nn.Module):
+    """
+    Multi-Head Self-Attention Layer for Time Series Transformers.
+    
+    Implements scaled dot-product attention with multiple heads. Supports
+    residual attention for improved gradient flow in deep networks.
+    
+    Args:
+        d_model (int): Model dimension.
+        n_heads (int): Number of attention heads.
+        d_k (int, optional): Key dimension per head. Defaults to d_model // n_heads.
+        d_v (int, optional): Value dimension per head. Defaults to d_model // n_heads.
+        res_attention (bool): Whether to use residual attention.
+        attn_dropout (float): Attention dropout rate.
+        proj_dropout (float): Projection dropout rate.
+        qkv_bias (bool): Whether to use bias in QKV projections.
+        lsa (bool): Whether to use local self-attention (unused).
+    """
     def __init__(self, d_model, n_heads, d_k=None, d_v=None, res_attention=False, attn_dropout=0., proj_dropout=0., qkv_bias=True, lsa=False):
-        """Multi Head Attention Layer
-        Input shape:
-            Q:       [batch_size (bs) x max_q_len x d_model]
-            K, V:    [batch_size (bs) x q_len x d_model]
-            mask:    [q_len x q_len]
+        """
+        Initialize multi-head attention layer.
+        
+        Input shapes:
+            Q: [batch_size x max_q_len x d_model]
+            K, V: [batch_size x q_len x d_model]
+            mask: [q_len x q_len]
         """
         super().__init__()
         d_k = d_model // n_heads if d_k is None else d_k
@@ -386,7 +529,34 @@ class _ScaledDotProductAttention(nn.Module):
 
 
 class PatchTST(TimeSeriesModel):
+    """
+    PatchTST (Patch-based Time Series Transformer) model for QuitoBench.
+    
+    PatchTST divides time series into patches and applies transformer attention
+    to learn temporal patterns. It uses channel-independent processing, meaning
+    each variable is processed separately, enabling efficient multivariate forecasting.
+    
+    Key features:
+    - Patch-based processing for efficiency
+    - Channel-independent architecture
+    - Optional decomposition (trend + residual)
+    - RevIN normalization for better generalization
+    - Support for both individual and shared prediction heads
+    
+    Reference:
+        Nie et al. (2023). "A Time Series is Worth 64 Words: Long-term Forecasting
+        with Transformers"
+    """
     def __init__(self, config: PatchTSTModelConfig, local_rank: int = -1):
+        """
+        Initialize the PatchTST model.
+        
+        Args:
+            config (PatchTSTModelConfig): Model configuration containing
+                architecture parameters (patch_len, stride, d_model, etc.).
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+        """
         super().__init__(config, local_rank)
         # load parameters
         c_in = config.enc_in
@@ -460,7 +630,24 @@ class PatchTST(TimeSeriesModel):
                                   pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
                                   subtract_last=subtract_last, verbose=verbose)
     
-    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):           # x: [Batch, Input length, Channel]
+    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):
+        """
+        Forward pass for time series forecasting.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+            y (torch.Tensor, optional): Target tensor (not used by PatchTST).
+                Defaults to None.
+            x_mark (torch.Tensor, optional): Time features (not used by PatchTST).
+                Defaults to None.
+            y_mark (torch.Tensor, optional): Time features (not used by PatchTST).
+                Defaults to None.
+            **kwargs: Additional arguments (not used).
+        
+        Returns:
+            torch.Tensor: Predicted time series of shape
+                (batch_size, forecast_horizon, n_features).
+        """
         if self.decomposition:
             res_init, trend_init = self.decomp_module(x)
             res_init, trend_init = res_init.permute(0,2,1), trend_init.permute(0,2,1)  # x: [Batch, Channel, Input length]

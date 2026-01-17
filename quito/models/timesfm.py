@@ -13,17 +13,39 @@ from quito.models.base import TimeSeriesModel
 
 class TimesFMV2p5(TimeSeriesModel):
     """
-    Lightweight wrapper for Google TimesFM 2.5-200B time series foundation model. Make sure to first install the library:
-
-    https://github.com/google-research/timesfm
+    Lightweight wrapper for Google TimesFM 2.5-200B time series foundation model.
+    
+    TimesFM is a large-scale pre-trained foundation model for time series forecasting
+    that supports zero-shot inference across diverse domains. The 2.5-200B variant
+    is a 200M parameter model.
+    
+    Installation:
+        Install from: https://github.com/google-research/timesfm
     
     Supports:
     - Zero-shot inference (predict)
-    - Fine-tuning/Training (forward)
-    - Probabilistic forecasting (predict_prob)
+    - Fine-tuning/Training (forward) - Not implemented
+    - Probabilistic forecasting (predict_prob) - Not implemented
+    
+    Reference:
+        Google Research TimesFM: Time Series Foundation Model
     """
     
     def __init__(self, config: PretrainedConfig, local_rank: int = -1):
+        """
+        Initialize the TimesFM model.
+        
+        Args:
+            config (PretrainedConfig): Model configuration containing:
+                - name_or_path: Model name or path
+                - seq_len: Maximum context length
+                - forecast_horizon: Forecast horizon
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+                
+        Raises:
+            ImportError: If timesfm library is not installed.
+        """
         super().__init__(config, local_rank)
         
         # Try to load Chronos pipeline
@@ -85,7 +107,18 @@ class TimesFMV2p5(TimeSeriesModel):
 
     def predict(self, x: torch.Tensor, y: torch.Tensor = None, x_mark: torch.Tensor = None, y_mark: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
-        Generate point forecasts (median).
+        Generate point forecasts using TimesFM zero-shot inference.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+            y (torch.Tensor, optional): Target tensor (not used). Defaults to None.
+            x_mark (torch.Tensor, optional): Time features (not used). Defaults to None.
+            y_mark (torch.Tensor, optional): Time features (not used). Defaults to None.
+            **kwargs: Additional arguments (not used).
+        
+        Returns:
+            torch.Tensor: Point forecasts (median) of shape
+                (batch_size, forecast_horizon, n_features).
         """
         with torch.no_grad():
             # for timesfm, the input is a list of np.array, we need to flatten the tensor

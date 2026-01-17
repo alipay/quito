@@ -14,13 +14,22 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 def create_data_directory_structure(base_path: Union[str, Path] = "./data") -> Path:
     """
-    Create a standard data directory structure for QUITO projects.
+    Create a standard data directory structure for QuitoBench projects.
+    
+    Sets up a well-organized directory hierarchy for storing raw data, processed
+    data, train/val/test splits, synthetic datasets, benchmarks, cache, and exports.
+    Also creates a README.md file explaining the structure.
     
     Args:
-        base_path: Base path for the data directory
+        base_path (Union[str, Path], optional): Base path for the data directory.
+            Defaults to "./data".
         
     Returns:
-        Path to the created data directory
+        Path: Path object pointing to the created data directory.
+        
+    Example:
+        >>> data_dir = create_data_directory_structure("./my_data")
+        >>> # Creates: my_data/raw/, my_data/processed/, my_data/train/, etc.
     """
     base_path = Path(base_path)
     
@@ -82,23 +91,41 @@ This directory contains all data files for your QUITO project.
 
 
 def get_default_data_path() -> Path:
-    """Get the default data directory path."""
+    """
+    Get the default data directory path.
+    
+    Returns:
+        Path: Path object pointing to the default data directory (./data).
+    """
     return Path("./data")
 
 
 def save_dataset(data: Dict[str, Any], filename: str, data_dir: Optional[Union[str, Path]] = None, 
                  format: str = "npz") -> Path:
     """
-    Save a dataset to disk.
+    Save a dataset dictionary to disk in various formats.
+    
+    Supports multiple file formats (NPZ, PKL, JSON) and automatically handles
+    PyTorch tensor to NumPy array conversion. Creates parent directories if needed.
     
     Args:
-        data: Dataset dictionary containing arrays/tensors
-        filename: Name of the file (without extension)
-        data_dir: Directory to save the file (defaults to ./data/processed)
-        format: File format ('npz', 'pkl', 'csv', 'json')
-        
+        data (Dict[str, Any]): Dataset dictionary containing arrays, tensors, or
+            other serializable data structures.
+        filename (str): Name of the file without extension (e.g., "my_dataset").
+        data_dir (Optional[Union[str, Path]], optional): Directory to save the file.
+            Defaults to ./data/processed if None.
+        format (str, optional): File format. Options: 'npz', 'pkl', 'json'.
+            Defaults to "npz".
+    
     Returns:
-        Path to the saved file
+        Path: Path object pointing to the saved file.
+        
+    Raises:
+        ValueError: If an unsupported format is specified.
+        
+    Example:
+        >>> dataset = {'train': np.array([1, 2, 3]), 'test': np.array([4, 5, 6])}
+        >>> path = save_dataset(dataset, "my_data", format="npz")
     """
     if data_dir is None:
         data_dir = get_default_data_path() / "processed"
@@ -147,14 +174,26 @@ def save_dataset(data: Dict[str, Any], filename: str, data_dir: Optional[Union[s
 
 def load_data_from_file(filename: str, data_dir: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
     """
-    Load a dataset from disk.
+    Load a dataset from disk, automatically detecting file format.
+    
+    Attempts to load a dataset file, trying multiple extensions (.npz, .pkl, .json, .csv)
+    if the exact filename is not found. Supports NumPy, pickle, JSON, and CSV formats.
     
     Args:
-        filename: Name of the file (with or without extension)
-        data_dir: Directory to load from (defaults to ./data/processed)
-        
+        filename (str): Name of the file with or without extension.
+        data_dir (Optional[Union[str, Path]], optional): Directory to load from.
+            Defaults to ./data/processed if None.
+    
     Returns:
-        Dataset dictionary
+        Dict[str, Any]: Dataset dictionary containing the loaded data.
+        
+    Raises:
+        FileNotFoundError: If the dataset file cannot be found.
+        ValueError: If the file format is unsupported.
+        
+    Example:
+        >>> data = load_data_from_file("my_dataset", data_dir="./data/processed")
+        >>> # Automatically tries: my_dataset.npz, my_dataset.pkl, etc.
     """
     if data_dir is None:
         data_dir = get_default_data_path() / "processed"
@@ -193,15 +232,33 @@ def load_data_from_file(filename: str, data_dir: Optional[Union[str, Path]] = No
 def normalize_data(data: np.ndarray, method: str = "standard", 
                    scaler: Optional[Any] = None) -> Tuple[np.ndarray, Any]:
     """
-    Normalize time series data.
+    Normalize time series data using various scaling methods.
+    
+    Applies normalization to time series data, either fitting a new scaler or
+    using a pre-fitted one. Supports standard scaling (zero mean, unit variance)
+    and min-max scaling (0-1 range).
     
     Args:
-        data: Input data array
-        method: Normalization method ('standard', 'minmax', 'robust')
-        scaler: Pre-fitted scaler (optional)
-        
+        data (np.ndarray): Input time series data array (1D or 2D).
+        method (str, optional): Normalization method. Options:
+            - 'standard': Zero mean, unit variance (StandardScaler)
+            - 'minmax': Scale to [0, 1] range (MinMaxScaler)
+            Defaults to "standard".
+        scaler (Optional[Any], optional): Pre-fitted scaler object. If provided,
+            uses it for transformation instead of fitting a new one. Defaults to None.
+    
     Returns:
-        Tuple of (normalized_data, scaler)
+        Tuple[np.ndarray, Any]: A tuple containing:
+            - normalized_data: Normalized data array
+            - scaler: Fitted scaler object (can be used for denormalization)
+            
+    Raises:
+        ValueError: If an unknown normalization method is specified.
+        
+    Example:
+        >>> data = np.array([1, 2, 3, 4, 5])
+        >>> normalized, scaler = normalize_data(data, method="standard")
+        >>> # Use scaler later for denormalization
     """
     if scaler is None:
         if method == "standard":
@@ -230,14 +287,22 @@ def normalize_data(data: np.ndarray, method: str = "standard",
 
 def denormalize_data(data: np.ndarray, scaler: Any) -> np.ndarray:
     """
-    Denormalize time series data.
+    Denormalize time series data using a fitted scaler.
+    
+    Reverses the normalization transformation applied by normalize_data(),
+    restoring the data to its original scale.
     
     Args:
-        data: Normalized data array
-        scaler: Fitted scaler
-        
+        data (np.ndarray): Normalized data array (1D or 2D).
+        scaler (Any): Fitted scaler object from normalize_data().
+    
     Returns:
-        Denormalized data array
+        np.ndarray: Denormalized data array in original scale.
+        
+    Example:
+        >>> normalized, scaler = normalize_data(original_data)
+        >>> restored = denormalize_data(normalized, scaler)
+        >>> np.allclose(original_data, restored)  # Should be True
     """
     if data.ndim == 1:
         data_reshaped = data.reshape(-1, 1)
@@ -251,16 +316,28 @@ def denormalize_data(data: np.ndarray, scaler: Any) -> np.ndarray:
 def split_sequences(data: np.ndarray, sequence_length: int, 
                     forecast_horizon: int = 1, step: int = 1) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Split time series data into sequences for training.
+    Split time series data into input-output sequence pairs for training.
+    
+    Creates sliding windows of input sequences and corresponding target sequences
+    for supervised learning. Useful for preparing time series data for RNN/Transformer models.
     
     Args:
-        data: Input time series data
-        sequence_length: Length of input sequences
-        forecast_horizon: Number of future steps to predict
-        step: Step size between sequences
-        
+        data (np.ndarray): Input time series data (1D array).
+        sequence_length (int): Length of input sequences (lookback window).
+        forecast_horizon (int, optional): Number of future steps to predict.
+            Defaults to 1.
+        step (int, optional): Step size between sequences. Use 1 for overlapping
+            windows, larger values for non-overlapping. Defaults to 1.
+    
     Returns:
-        Tuple of (input_sequences, target_sequences)
+        Tuple[np.ndarray, np.ndarray]: A tuple containing:
+            - input_sequences: Array of shape (n_samples, sequence_length)
+            - target_sequences: Array of shape (n_samples, forecast_horizon)
+            
+    Example:
+        >>> data = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        >>> X, y = split_sequences(data, sequence_length=3, forecast_horizon=2)
+        >>> # X: [[1,2,3], [2,3,4], ...], y: [[4,5], [5,6], ...]
     """
     X, y = [], []
     
@@ -276,13 +353,22 @@ def create_sliding_windows(data: np.ndarray, window_size: int,
     """
     Create sliding windows from time series data.
     
+    Generates overlapping or non-overlapping windows of fixed size from a time series.
+    Useful for creating training samples or analyzing local patterns.
+    
     Args:
-        data: Input time series data
-        window_size: Size of each window
-        step_size: Step size between windows
-        
+        data (np.ndarray): Input time series data (1D array).
+        window_size (int): Size of each sliding window.
+        step_size (int, optional): Step size between windows. Use 1 for overlapping
+            windows, window_size for non-overlapping. Defaults to 1.
+    
     Returns:
-        Array of sliding windows
+        np.ndarray: Array of sliding windows with shape (n_windows, window_size).
+        
+    Example:
+        >>> data = np.array([1, 2, 3, 4, 5, 6, 7, 8])
+        >>> windows = create_sliding_windows(data, window_size=3, step_size=2)
+        >>> # Result: [[1,2,3], [3,4,5], [5,6,7]]
     """
     windows = []
     
@@ -295,16 +381,29 @@ def create_sliding_windows(data: np.ndarray, window_size: int,
 def pad_sequences(sequences: List[np.ndarray], max_length: Optional[int] = None,
                   padding: str = "post", value: float = 0.0) -> np.ndarray:
     """
-    Pad sequences to the same length.
+    Pad sequences to the same length for batch processing.
+    
+    Pads or truncates sequences to a uniform length, which is required for
+    efficient batch processing in neural networks. Supports pre-padding and
+    post-padding strategies.
     
     Args:
-        sequences: List of sequences to pad
-        max_length: Maximum length (defaults to longest sequence)
-        padding: Padding strategy ('pre' or 'post')
-        value: Padding value
-        
+        sequences (List[np.ndarray]): List of variable-length sequences to pad.
+        max_length (Optional[int], optional): Target length for all sequences.
+            If None, uses the length of the longest sequence. Defaults to None.
+        padding (str, optional): Padding strategy. Options:
+            - 'post': Add padding at the end of sequences
+            - 'pre': Add padding at the beginning of sequences
+            Defaults to "post".
+        value (float, optional): Value to use for padding. Defaults to 0.0.
+    
     Returns:
-        Padded sequences array
+        np.ndarray: Padded sequences array with shape (n_sequences, max_length).
+        
+    Example:
+        >>> seqs = [np.array([1, 2]), np.array([1, 2, 3, 4])]
+        >>> padded = pad_sequences(seqs, max_length=5, padding="post")
+        >>> # Result: [[1, 2, 0, 0, 0], [1, 2, 3, 4, 0]]
     """
     if max_length is None:
         max_length = max(len(seq) for seq in sequences)
@@ -328,17 +427,35 @@ def split_train_val_test(data: np.ndarray, train_ratio: float = 0.7,
                         val_ratio: float = 0.15, test_ratio: float = 0.15,
                         random_state: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Split data into train, validation, and test sets.
+    Split data into train, validation, and test sets with random shuffling.
+    
+    Randomly shuffles and splits data into three subsets according to specified
+    ratios. Useful for time series data where temporal ordering is not critical
+    or for cross-validation setups.
     
     Args:
-        data: Input data
-        train_ratio: Ratio of training data
-        val_ratio: Ratio of validation data
-        test_ratio: Ratio of test data
-        random_state: Random seed for reproducibility
-        
+        data (np.ndarray): Input data array to split.
+        train_ratio (float, optional): Proportion of data for training.
+            Defaults to 0.7.
+        val_ratio (float, optional): Proportion of data for validation.
+            Defaults to 0.15.
+        test_ratio (float, optional): Proportion of data for testing.
+            Defaults to 0.15.
+        random_state (Optional[int], optional): Random seed for reproducibility.
+            If None, uses current random state. Defaults to None.
+    
     Returns:
-        Tuple of (train_data, val_data, test_data)
+        Tuple[np.ndarray, np.ndarray, np.ndarray]: A tuple containing:
+            - train_data: Training subset
+            - val_data: Validation subset
+            - test_data: Test subset
+            
+    Raises:
+        ValueError: If ratios do not sum to 1.0.
+        
+    Example:
+        >>> data = np.arange(100)
+        >>> train, val, test = split_train_val_test(data, 0.7, 0.15, 0.15, random_state=42)
     """
     if abs(train_ratio + val_ratio + test_ratio - 1.0) > 1e-6:
         raise ValueError("Ratios must sum to 1.0")
@@ -426,18 +543,44 @@ def generate_synthetic_dataset(dataset_type: str = "sine", num_samples: int = 10
                               sequence_length: int = 100, num_features: int = 1,
                               noise_level: float = 0.1, save_path: Optional[str] = None) -> Dict[str, np.ndarray]:
     """
-    Generate synthetic time series datasets for testing.
+    Generate synthetic time series datasets for testing and experimentation.
+    
+    Creates artificial time series data with various patterns (sine waves, trends,
+    seasonality, random walks) for algorithm testing, benchmarking, and debugging.
     
     Args:
-        dataset_type: Type of synthetic data ('sine', 'trend', 'seasonal', 'random_walk')
-        num_samples: Number of samples to generate
-        sequence_length: Length of each sequence
-        num_features: Number of features
-        noise_level: Level of noise to add
-        save_path: Path to save the dataset
-        
+        dataset_type (str, optional): Type of synthetic data pattern. Options:
+            - 'sine': Sinusoidal wave pattern
+            - 'trend': Linear trend with noise
+            - 'seasonal': Combined seasonal and trend components
+            - 'random_walk': Random walk process
+            Defaults to "sine".
+        num_samples (int, optional): Number of independent time series samples
+            to generate. Defaults to 1000.
+        sequence_length (int, optional): Length of each time series sequence.
+            Defaults to 100.
+        num_features (int, optional): Number of features/dimensions per sample.
+            Defaults to 1 (univariate).
+        noise_level (float, optional): Standard deviation of Gaussian noise
+            to add. Defaults to 0.1.
+        save_path (Optional[str], optional): Path to save the generated dataset.
+            If None, dataset is not saved. Defaults to None.
+    
     Returns:
-        Dictionary containing the generated dataset
+        Dict[str, np.ndarray]: Dictionary containing:
+            - 'data': Generated dataset array
+            - 'dataset_type': Type of dataset generated
+            - 'num_samples': Number of samples
+            - 'sequence_length': Length of sequences
+            - 'num_features': Number of features
+            - 'noise_level': Noise level used
+            
+    Raises:
+        ValueError: If an unknown dataset_type is specified.
+        
+    Example:
+        >>> dataset = generate_synthetic_dataset("sine", num_samples=100, sequence_length=50)
+        >>> print(dataset['data'].shape)  # (100, 50)
     """
     np.random.seed(42)  # For reproducibility
     

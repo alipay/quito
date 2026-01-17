@@ -31,14 +31,29 @@ class AutoModel:
     @classmethod
     def from_config(cls, config: Union[ModelConfig, PretrainedConfig], local_rank: int, **kwargs) -> BaseModel:
         """
-        Create a model from Quito configuration yaml file, this is the default entrance.
+        Create a model instance from a QuitoBench configuration object.
+        
+        This is the primary entry point for model creation from YAML configuration files.
+        The method automatically selects the appropriate model class based on the
+        model_name specified in the configuration.
         
         Args:
-            config: Model configuration
-            **kwargs: Additional arguments
+            config (Union[ModelConfig, PretrainedConfig]): Model configuration object
+                containing model architecture parameters and hyperparameters.
+            local_rank (int): Local rank for distributed training. Use -1 for single GPU/CPU.
+            **kwargs: Additional keyword arguments passed to model initialization.
             
         Returns:
-            Model instance
+            BaseModel: An instance of the appropriate model class (e.g., PatchTST, 
+                Chronos, iTransformer) based on the config.model_name.
+                
+        Raises:
+            ValueError: If the model_name in config is not recognized or not registered.
+            
+        Example:
+            >>> from quito.config import AutoConfig
+            >>> config = AutoConfig.from_yaml("configs/pretrain/patchtst/config.yaml")
+            >>> model = AutoModel.from_config(config.model_config, local_rank=0)
         """            
         model_class = MODEL_MAPPING.get(config.model_name)
         if model_class is None:

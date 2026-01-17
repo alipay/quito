@@ -19,10 +19,43 @@ from quito.models.utils.itransformer_utils import (Encoder,
 
 class Model(nn.Module):
     """
-    Paper link: https://arxiv.org/abs/2310.06625
+    iTransformer model architecture implementation.
+    
+    iTransformer inverts the standard transformer architecture by treating
+    variates (features) as tokens and time points as features. This enables
+    better cross-variate dependency learning for multivariate time series.
+    
+    Architecture:
+    1. Inverted embedding: B L N -> B N E (variates as tokens)
+    2. Encoder layers with self-attention
+    3. Projection: B N E -> B N S -> B S N (forecast horizon)
+    
+    Reference:
+        Liu et al. (2024). "iTransformer: Inverted Transformers Are Effective
+        for Time Series Forecasting" https://arxiv.org/abs/2310.06625
     """
 
     def __init__(self, configs):
+        """
+        Initialize iTransformer model.
+        
+        Args:
+            configs: Configuration object containing:
+                - seq_len: Input sequence length
+                - forecast_horizon: Prediction length
+                - d_model: Model dimension
+                - n_heads: Number of attention heads
+                - e_layers: Number of encoder layers
+                - d_ff: Feed-forward dimension
+                - dropout: Dropout rate
+                - embed: Embedding type
+                - freq: Frequency string
+                - use_norm: Whether to use normalization
+                - output_attention: Whether to output attention weights
+                - class_strategy: Classification strategy
+                - factor: Attention factor
+                - activation: Activation function
+        """
         super(Model, self).__init__()
         self.seq_len = configs.seq_len
         self.pred_len = configs.forecast_horizon
@@ -50,6 +83,20 @@ class Model(nn.Module):
         self.projector = nn.Linear(configs.d_model, self.pred_len, bias=True)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        """
+        Generate forecasts from input time series.
+        
+        Args:
+            x_enc (torch.Tensor): Encoder input of shape (B, L, N).
+            x_mark_enc (torch.Tensor, optional): Time features for encoder.
+            x_dec (torch.Tensor, optional): Decoder input (not used).
+            x_mark_dec (torch.Tensor, optional): Time features for decoder (not used).
+        
+        Returns:
+            tuple: (dec_out, attns) where:
+                - dec_out: Forecasts of shape (B, S, N)
+                - attns: Attention weights (if output_attention=True)
+        """
         if self.use_norm:
             # Normalization from Non-stationary Transformer
             means = x_enc.mean(1, keepdim=True).detach()
@@ -82,6 +129,20 @@ class Model(nn.Module):
 
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        """
+        Forward pass of iTransformer.
+        
+        Args:
+            x_enc (torch.Tensor): Encoder input of shape (B, L, N).
+            x_mark_enc (torch.Tensor, optional): Time features for encoder.
+            x_dec (torch.Tensor, optional): Decoder input (not used).
+            x_mark_dec (torch.Tensor, optional): Time features for decoder (not used).
+            mask (torch.Tensor, optional): Attention mask (not used).
+        
+        Returns:
+            torch.Tensor or tuple: Forecasts of shape (B, pred_len, N).
+                If output_attention=True, also returns attention weights.
+        """
         dec_out, attns = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
         if self.output_attention:
@@ -91,11 +152,55 @@ class Model(nn.Module):
 
 
 class ITransformer(TimeSeriesModel):
+    """
+    iTransformer model wrapper for QuitoBench.
+    
+    iTransformer inverts the standard transformer by treating variates as tokens
+    and time points as features. This architecture is particularly effective for
+    multivariate time series forecasting as it enables better cross-variate
+    dependency learning.
+    
+    Key features:
+    - Inverted architecture: variates as tokens, time as features
+    - Encoder-only architecture
+    - Optional instance normalization
+    - Cross-variate attention for multivariate forecasting
+    
+    Reference:
+        Liu et al. (2024). "iTransformer: Inverted Transformers Are Effective
+        for Time Series Forecasting"
+    """
     def __init__(self, config: ITransformerModelConfig, local_rank: int = -1):
+        """
+        Initialize the iTransformer model.
+        
+        Args:
+            config (ITransformerModelConfig): Model configuration containing
+                architecture parameters (d_model, n_heads, e_layers, etc.).
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+        """
         super().__init__(config, local_rank)
         self.model = Model(config)
     
-    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):           # x: [Batch, Input length, Channel]
+    def forward(self, x, y=None, x_mark=None, y_mark=None, **kwargs):
+        """
+        Forward pass for time series forecasting.
+        
+        Args:
+            x (torch.Tensor): Input time series of shape (batch_size, seq_len, n_features).
+            y (torch.Tensor, optional): Target tensor (not used by iTransformer).
+                Defaults to None.
+            x_mark (torch.Tensor, optional): Time features (not used).
+                Defaults to None.
+            y_mark (torch.Tensor, optional): Time features (not used).
+                Defaults to None.
+            **kwargs: Additional arguments (not used).
+        
+        Returns:
+            torch.Tensor: Predicted time series of shape
+                (batch_size, forecast_horizon, n_features).
+        """
         predictions = self.model(x_enc=x, x_mark_enc=None, x_dec=None, x_mark_dec=None)
 
         return predictions

@@ -22,7 +22,13 @@ class StrategyType(Enum):
 
 class TaskType(Enum):
     """
-    Enumeration of supported task types.
+    Enumeration of supported task types in QuitoBench.
+    
+    Defines the different types of operations that can be performed:
+    - PRE_TRAIN: Pre-training on unlabeled data (out-of-sample training)
+    - FINE_TUNE: Fine-tuning on labeled data (in-sample training)
+    - EVALUATE: Evaluation on test data
+    - TUNE: Hyperparameter tuning on train/validation splits
     """
     PRE_TRAIN = 'pretrain' # perform out-sample traning on TRAIN part of the Pretraining set
     FINE_TUNE = 'finetune' # perform in-sample training on TRAIN part of the Train/test set
@@ -32,7 +38,12 @@ class TaskType(Enum):
 
 class ModeType(Enum):
     """
-    Enumeration of supported mode types.
+    Enumeration of supported data split modes.
+    
+    Defines which portion of the dataset to use:
+    - TRAIN: Training split
+    - VALID: Validation split
+    - TEST: Test split
     """
     TRAIN = 'train'
     VALID = 'valid'
@@ -40,7 +51,16 @@ class ModeType(Enum):
     
     
 class OptimizerType(Enum):
-    """Enumeration of supported optimizer types."""
+    """
+    Enumeration of supported optimizer types.
+    
+    Defines the optimization algorithms available for training:
+    - ADAM: Adaptive Moment Estimation
+    - ADAMW: Adam with weight decay
+    - SGD: Stochastic Gradient Descent
+    - ADAGRAD: Adaptive Gradient Algorithm
+    - RMSprop: Root Mean Square Propagation
+    """
     ADAM = "adam"
     ADAMW = "adamw"
     SGD = "sgd"
@@ -49,7 +69,18 @@ class OptimizerType(Enum):
 
 
 class SchedulerType(Enum):
-    """Enumeration of supported scheduler types."""
+    """
+    Enumeration of supported learning rate scheduler types.
+    
+    Defines the learning rate scheduling strategies:
+    - LINEAR: Linear decay
+    - COSINE: Cosine annealing
+    - COSINE_WITH_RESTARTS: Cosine annealing with restarts
+    - POLYNOMIAL: Polynomial decay
+    - CONSTANT: Constant learning rate
+    - CONSTANT_WITH_WARMUP: Constant with warmup phase
+    - STEP: Step-wise decay
+    """
     LINEAR = "linear"
     COSINE = "cosine"
     COSINE_WITH_RESTARTS = "cosine_with_restarts"
@@ -62,10 +93,26 @@ class SchedulerType(Enum):
 @dataclass
 class TrainerConfig(BaseConfig):
     """
-    Configuration for training time series models.
+    Base configuration class for training time series forecasting models.
     
-    This class defines all parameters needed for training, including
-    optimization, scheduling, and distributed training settings.
+    This comprehensive configuration class defines all parameters needed for
+    training, including optimization, learning rate scheduling, data loading,
+    evaluation, checkpointing, logging, and distributed training settings.
+    
+    The class uses a registry pattern to automatically register subclasses,
+    enabling dynamic trainer selection based on configuration.
+    
+    Attributes:
+        REGISTRY (ClassVar[Dict]): Class-level registry of all TrainerConfig subclasses.
+        trainer_name (str): Name of the trainer class to use. Defaults to 'NaiveTrainer'.
+        
+    Example:
+        >>> config = TrainerConfig(
+        ...     num_epochs=100,
+        ...     learning_rate=1e-4,
+        ...     batch_size=32,
+        ...     optimizer=OptimizerType.ADAMW
+        ... )
     """
     REGISTRY: ClassVar[Dict[str, Type["TrainerConfig"]]] = {}
     trainer_name: str = 'NaiveTrainer'
@@ -146,7 +193,16 @@ class TrainerConfig(BaseConfig):
         super().__post_init__()
     
     def validate(self):
-        """Validate training configuration parameters."""
+        """
+        Validate training configuration parameters.
+        
+        Checks that all critical parameters are within valid ranges and
+        that the configuration is consistent.
+        
+        Raises:
+            ValueError: If any parameter is invalid (e.g., negative values,
+                ratios outside [0, 1], etc.).
+        """
         if self.num_epochs <= 0:
             raise ValueError("num_epochs must be positive")
         
@@ -175,28 +231,66 @@ class TrainerConfig(BaseConfig):
             raise ValueError("logging_steps must be positive")
     
     def get_effective_batch_size(self) -> int:
-        """Get the effective batch size across all devices and accumulation steps."""
+        """
+        Calculate the effective batch size across all devices and gradient accumulation.
+        
+        The effective batch size accounts for:
+        - Base batch size per device
+        - Gradient accumulation steps (simulating larger batches)
+        - Number of distributed training processes (world_size)
+        
+        Returns:
+            int: Effective batch size = batch_size * gradient_accumulation_steps * world_size.
+            
+        Example:
+            >>> config.batch_size = 32
+            >>> config.gradient_accumulation_steps = 4
+            >>> config.world_size = 2
+            >>> effective = config.get_effective_batch_size()
+            >>> # Returns: 256 (32 * 4 * 2)
+        """
         return self.batch_size * self.gradient_accumulation_steps * self.world_size
     
     def to_huggingface_training_args(self) -> Dict[str, Any]:
         """
         Convert to Hugging Face Transformers TrainingArguments compatible format.
         
+        Converts QuitoBench training configuration to a dictionary format
+        compatible with Hugging Face's TrainingArguments class, enabling
+        interoperability with Hugging Face training utilities.
+        
         Returns:
-            Dictionary compatible with Hugging Face TrainingArguments
+            Dict[str, Any]: Dictionary with keys matching Hugging Face
+                TrainingArguments parameters.
+                
+        Note:
+            This method is a stub and should be implemented for full
+            Hugging Face integration.
         """
         return
     
     @classmethod
-    def get_default_config(cls, model_type: str = "general") -> "TrainingConfig":
+    def get_default_config(cls, model_type: str = "general") -> "TrainerConfig":
         """
         Get default training configuration for different model types.
         
+        Provides sensible default configurations tailored to different
+        model architectures (GANs, transformers, VAEs, etc.).
+        
         Args:
-            model_type: Type of model ("gan", "transformer", "vae", "general")
-            
+            model_type (str, optional): Type of model. Options:
+                - "gan": Generative Adversarial Network defaults
+                - "transformer": Transformer model defaults
+                - "vae": Variational Autoencoder defaults
+                - "general": General purpose defaults
+                Defaults to "general".
+        
         Returns:
-            Default training configuration
+            TrainerConfig: Default training configuration instance.
+            
+        Note:
+            This method is a stub and should be implemented with
+            model-specific defaults.
         """
         return
 
@@ -206,4 +300,10 @@ class TrainerConfig(BaseConfig):
 
 @dataclass
 class NaiveTrainerTrainerConfig(TrainerConfig):
+    """
+    Configuration for the NaiveTrainer.
+    
+    A simple trainer configuration that provides basic training functionality
+    without advanced features. Automatically registered in TrainerConfig.REGISTRY.
+    """
     pass

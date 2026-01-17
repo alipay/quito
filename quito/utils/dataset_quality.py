@@ -172,7 +172,21 @@ def hurst_exponent(x: np.ndarray, min_window: int = 20, max_window: Optional[int
 # ------------------------- Utilities -------------------------
 
 def _to_1d_numpy(x: ArrayLike) -> np.ndarray:
-    """Accept numpy array, list, or torch tensor and return a 1D float numpy array."""
+    """
+    Convert input to 1D numpy array.
+    
+    Accepts numpy array, list, or torch tensor and returns a 1D float numpy array.
+    Automatically handles torch tensors by detaching and moving to CPU.
+    
+    Args:
+        x (ArrayLike): Input array (numpy array, list, or torch tensor).
+    
+    Returns:
+        np.ndarray: 1D float numpy array.
+        
+    Raises:
+        ValueError: If input cannot be squeezed to 1D.
+    """
     if TORCH_AVAILABLE and isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
     x = np.asarray(x, dtype=float).squeeze()
@@ -183,11 +197,31 @@ def _to_1d_numpy(x: ArrayLike) -> np.ndarray:
 
 def spectral_entropy_welch(x: np.ndarray, fs: float = 1.0, nperseg: Optional[int] = None) -> float:
     """
-    Normalized spectral entropy in [0,1] using Welch's method.
+    Compute normalized spectral entropy in [0,1] using Welch's method.
+    
+    Spectral entropy measures the predictability of a time series based on its
+    power spectral density. Lower entropy indicates more predictable (structured)
+    series, while higher entropy indicates more random (unpredictable) series.
+    
+    Args:
+        x (np.ndarray): Input time series array.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        nperseg (Optional[int]): Length of each segment for Welch's method.
+            If None, uses max(64, min(len(x), 1024)). Defaults to None.
     
     Returns:
-        0.0 for constant/zero-variance series (perfectly predictable)
-        1.0 for maximum entropy (white noise)
+        float: Normalized spectral entropy in [0, 1]:
+            - 0.0: Constant or zero-variance series (perfectly predictable)
+            - 1.0: Maximum entropy (white noise, unpredictable)
+            
+    Note:
+        The entropy is normalized by the maximum possible entropy (log of number
+        of frequency bins) to ensure values are in [0, 1].
+        
+    Example:
+        >>> series = np.sin(np.linspace(0, 4*np.pi, 100))
+        >>> entropy = spectral_entropy_welch(series)
+        >>> # Returns low entropy (highly predictable periodic signal)
     """
     x = np.asarray(x, dtype=float)
     if x.size == 0 or np.all(np.isnan(x)):
@@ -216,9 +250,37 @@ def forecastability_welch(
     window: Optional[int] = None
 ) -> float:
     """
-    Forecastability in [0,1] = 1 - spectral_entropy_welch.
-    If 'window' is provided, compute mean forecastability over non-overlapping chunks of length 'window'
-    (last chunk can be shorter).
+    Compute forecastability score in [0, 1] using spectral entropy.
+    
+    Forecastability is defined as 1 - spectral_entropy_welch, measuring how
+    predictable a time series is. Higher values indicate more forecastable series.
+    
+    If 'window' is provided, computes mean forecastability over non-overlapping
+    chunks of the specified length, which can help assess forecastability
+    stability across different segments of the series.
+    
+    Args:
+        x (np.ndarray): Input time series array.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        nperseg (Optional[int]): Length of each segment for Welch's method.
+            If None, uses max(64, min(len(x), 1024)). Defaults to None.
+        window (Optional[int]): Window size for averaging forecastability across
+            chunks. If None, computes forecastability for the entire series.
+            Defaults to None.
+    
+    Returns:
+        float: Forecastability score in [0, 1]:
+            - 1.0: Perfectly forecastable (constant or highly structured)
+            - 0.0: Not forecastable (white noise)
+            
+    Example:
+        >>> series = np.random.randn(100)  # Random noise
+        >>> fcast = forecastability_welch(series)
+        >>> # Returns low forecastability (~0.0)
+        >>> 
+        >>> series = np.sin(np.linspace(0, 4*np.pi, 100))  # Periodic
+        >>> fcast = forecastability_welch(series)
+        >>> # Returns high forecastability (~1.0)
     """
     x = np.asarray(x, dtype=float)
     if window is None or window <= 0 or window >= len(x):
@@ -294,16 +356,55 @@ def trend_strength_stl(x: np.ndarray, period: Optional[int]) -> float:
 
 
 def missing_ratio(x: np.ndarray) -> float:
+    """
+    Compute the ratio of missing values in the array.
+    
+    Args:
+        x (np.ndarray): Input array.
+    
+    Returns:
+        float: Ratio of NaN values (0.0 to 1.0). Returns 1.0 for empty arrays.
+    """
     return float(np.mean(np.isnan(x))) if x.size else 1.0
 
 
 def effective_length(x: np.ndarray) -> int:
+    """
+    Compute the effective length (number of non-NaN values).
+    
+    Args:
+        x (np.ndarray): Input array.
+    
+    Returns:
+        int: Count of non-NaN values in the array.
+    """
     return int(np.sum(~np.isnan(x)))
 
 
 def coefficient_of_variation(x: np.ndarray) -> float:
     """
-    CV = std / |mean| on non-NaN values; returns inf if mean=0 and std>0; 0 if all constant.
+    Compute coefficient of variation (CV) = std / |mean|.
+    
+    The coefficient of variation measures the relative variability of a time series,
+    normalized by its mean. This makes it useful for comparing variability across
+    series with different scales.
+    
+    Args:
+        x (np.ndarray): Input time series array.
+    
+    Returns:
+        float: Coefficient of variation:
+            - 0.0: Constant series (zero variance)
+            - inf: Mean is zero but std > 0
+            - np.nan: All values are NaN or empty array
+            
+    Note:
+        Only non-NaN values are used in the computation.
+        
+    Example:
+        >>> series = np.array([1, 2, 3, 4, 5])
+        >>> cv = coefficient_of_variation(series)
+        >>> # Returns: std(series) / mean(series) ≈ 0.527
     """
     y = x[~np.isnan(x)]
     if y.size == 0:
@@ -317,7 +418,23 @@ def coefficient_of_variation(x: np.ndarray) -> float:
 
 def fill_missing(x: np.ndarray, how: str = 'none') -> np.ndarray:
     """
-    Fill missing values: 'none' | 'zero' | 'mean' | 'forward' | 'backward'
+    Fill missing values using various strategies.
+    
+    Args:
+        x (np.ndarray): Input array with potentially missing values.
+        how (str, optional): Fill strategy. Options:
+            - 'none': No filling (return as-is)
+            - 'zero': Fill with zeros
+            - 'mean': Fill with mean of non-NaN values
+            - 'forward': Forward fill (propagate last valid value)
+            - 'backward': Backward fill (propagate next valid value)
+            Defaults to 'none'.
+    
+    Returns:
+        np.ndarray: Array with missing values filled according to strategy.
+        
+    Raises:
+        ValueError: If unknown fill method is specified.
     """
     x = np.asarray(x, dtype=float).copy()
     if how == 'none':
@@ -353,6 +470,26 @@ def fill_missing(x: np.ndarray, how: str = 'none') -> np.ndarray:
 
 @dataclass
 class SeriesQuality:
+    """
+    Quality metrics for a single time series.
+    
+    Contains comprehensive quality metrics computed for an individual
+    time series, including forecastability, seasonality, trend strength,
+    missing data statistics, and statistical properties.
+    
+    Attributes:
+        forecastability (float): Forecastability score in [0, 1].
+            Higher values indicate more predictable series.
+        season_strength (float): Seasonality strength from STL in [0, 1].
+        trend_strength (float): Trend strength from STL in [0, 1].
+        missing_ratio (float): Fraction of missing values in [0, 1].
+        eff_length (int): Effective length (number of non-NaN values).
+        cv (float): Coefficient of variation (std/mean).
+        adf_stat (float): Augmented Dickey-Fuller test statistic.
+            May be np.nan if test cannot be computed.
+        hurst (float): Hurst exponent measuring long-range dependence.
+            May be np.nan if computation fails.
+    """
     forecastability: float
     season_strength: float
     trend_strength: float  # Trend strength from STL decomposition
@@ -363,6 +500,12 @@ class SeriesQuality:
     hurst: float  # Hurst exponent, may be np.nan
 
     def to_dict(self) -> Dict[str, float]:
+        """
+        Convert SeriesQuality to dictionary.
+        
+        Returns:
+            Dict[str, float]: Dictionary representation of quality metrics.
+        """
         return asdict(self)
 
 
@@ -377,14 +520,56 @@ def evaluate_series(
     fill_for_metrics: str = 'none'
 ) -> SeriesQuality:
     """
-    Unified per-series evaluation (QUITO).
-    - Missing ratio & effective length computed on the raw series.
-    - Forecastability computed on series with NaNs set to 0 after centering (via Welch subroutine).
-      Optional windowing averages forecastability across non-overlapping chunks.
-    - Seasonality strength via STL on series with NaNs filled by median (internal).
-    - CV computed on series with chosen fill (fill_for_metrics).
-    - ADF (optional) uses 'arch' and is applied to filled series (adf_fill).
-    - Hurst exponent (optional) measures long-range dependence.
+    Unified per-series quality evaluation (QUITO).
+    
+    Computes comprehensive quality metrics for a single time series, including
+    forecastability, seasonality/trend strength, missing data statistics, and
+    statistical properties. This is the core function for evaluating individual
+    time series quality.
+    
+    Args:
+        x (ArrayLike): Input time series (numpy array, list, or torch tensor).
+        period (Optional[int]): Seasonal period for STL decomposition.
+            Required for seasonality/trend strength computation. Defaults to None.
+        fs (float, optional): Sampling frequency for spectral analysis.
+            Defaults to 1.0.
+        compute_adf (bool, optional): Whether to compute Augmented Dickey-Fuller
+            test for stationarity. Requires 'arch' package. Defaults to False.
+        compute_hurst (bool, optional): Whether to compute Hurst exponent.
+            Defaults to True.
+        adf_fill (str, optional): Fill strategy for ADF test ('mean', 'forward',
+            'backward', 'zero', 'none'). Defaults to 'mean'.
+        forecast_window (Optional[int]): Window size for averaging forecastability
+            across chunks. If None, uses entire series. Defaults to None.
+        fill_for_metrics (str, optional): Fill strategy for CV computation
+            ('mean', 'forward', 'backward', 'zero', 'none'). Defaults to 'none'.
+    
+    Returns:
+        SeriesQuality: Dataclass containing all quality metrics:
+            - forecastability: Forecastability score [0, 1]
+            - season_strength: Seasonality strength from STL [0, 1]
+            - trend_strength: Trend strength from STL [0, 1]
+            - missing_ratio: Fraction of missing values [0, 1]
+            - eff_length: Effective length (non-NaN count)
+            - cv: Coefficient of variation
+            - adf_stat: ADF test statistic (if compute_adf=True)
+            - hurst: Hurst exponent (if compute_hurst=True)
+            
+    Note:
+        - Missing ratio & effective length: computed on raw series
+        - Forecastability: computed on series with NaNs set to 0 after centering
+        - Seasonality/Trend: STL applied to series with NaNs filled by median
+        - CV: computed on series with chosen fill strategy
+        - ADF: applied to filled series (requires 'arch' package)
+        - Hurst: computed on mean-filled series
+        
+    Raises:
+        ValueError: If input cannot be converted to 1D array.
+        
+    Example:
+        >>> series = np.array([1, 2, 3, 4, 5, np.nan, 7, 8, 9, 10])
+        >>> quality = evaluate_series(series, period=5, compute_adf=True)
+        >>> print(quality.forecastability, quality.missing_ratio)
     """
     x = _to_1d_numpy(x)
 
@@ -451,7 +636,33 @@ def summarize_dataset_medians(
     forecast_window: Optional[int] = None
 ) -> Dict[str, float]:
     """
-    QUITO medians (robust, simple).
+    Compute median quality metrics across a list of time series.
+    
+    Evaluates each series and computes robust median statistics across
+    all series. This provides a dataset-level summary using medians,
+    which are robust to outliers.
+    
+    Args:
+        series_list (List[ArrayLike]): List of time series to evaluate.
+        period (Optional[int]): Seasonal period for STL decomposition.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        compute_adf (bool, optional): Whether to compute ADF test.
+            Defaults to False.
+        compute_hurst (bool, optional): Whether to compute Hurst exponent.
+            Defaults to True.
+        forecast_window (Optional[int]): Window size for forecastability
+            averaging. Defaults to None.
+    
+    Returns:
+        Dict[str, float]: Dictionary containing median metrics:
+            - forecastability_med: Median forecastability
+            - season_strength_med: Median seasonality strength
+            - trend_strength_med: Median trend strength
+            - missing_med: Median missing ratio
+            - length_med: Median effective length
+            - hurst_med: Median Hurst exponent
+            - n_series: Number of series evaluated
+            - adf_stat_med: Median ADF statistic (if compute_adf=True)
     """
     rows = [evaluate_series(s, period=period, fs=fs, compute_adf=compute_adf,
                             compute_hurst=compute_hurst,
@@ -490,7 +701,29 @@ def evaluate_dataset(
     verbose: bool = True
 ) -> Dict[str, Union[float, Dict]]:
     """
-    Weighted & unweighted dataset summaries + totals (QUITO).
+    Comprehensive dataset quality evaluation with weighted and unweighted summaries.
+    
+    Evaluates all series in the dataset and computes both weighted (by effective length)
+    and unweighted aggregations. Also computes a composite QualityScore for ranking.
+    
+    Args:
+        series_list (List[ArrayLike]): List of time series to evaluate.
+        period (Optional[int]): Seasonal period for STL decomposition.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        compute_adf (bool, optional): Whether to compute ADF test. Defaults to False.
+        compute_hurst (bool, optional): Whether to compute Hurst exponent.
+            Defaults to True.
+        forecast_window (Optional[int]): Window size for forecastability averaging.
+        fill_for_metrics (str, optional): Fill strategy for CV computation.
+            Defaults to 'none'.
+        verbose (bool, optional): Whether to print progress. Defaults to True.
+    
+    Returns:
+        Dict[str, Union[float, Dict]]: Dictionary containing:
+            - weighted: Weighted summary (by effective length)
+            - unweighted: Unweighted summary (simple averages)
+            - totals: Total statistics (sums, counts)
+            - QualityScore: Composite quality score for ranking
     """
     lengths, fcasts, cvs, missings, adfs, hursts, trends = [], [], [], [], [], [], []
     num_failed = 0
@@ -577,9 +810,33 @@ def compare_datasets(
     forecast_window: Optional[int] = None
 ) -> Dict[str, Dict[str, float]]:
     """
-    Compare multiple datasets with QUITO medians + composite QualityScore.
-      QualityScore = 0.45*Forecast_med + 0.25*Season_med + 0.15*(1-Missing_med) + 0.15*LengthNorm
-    LengthNorm uses log(median_length)/log(max_median_length_across_datasets).
+    Compare multiple datasets using QUITO medians and composite QualityScore.
+    
+    Evaluates each dataset and computes a composite QualityScore for ranking:
+    QualityScore = 0.45*Forecast_med + 0.25*Season_med + 0.15*(1-Missing_med) + 0.15*LengthNorm
+    
+    LengthNorm uses log(median_length)/log(max_median_length_across_datasets) to normalize
+    length differences across datasets.
+    
+    Args:
+        datasets (Dict[str, List[ArrayLike]]): Dictionary mapping dataset names
+            to lists of time series arrays.
+        period (Optional[int]): Seasonal period for STL decomposition.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        compute_adf (bool, optional): Whether to compute ADF test. Defaults to False.
+        forecast_window (Optional[int]): Window size for forecastability averaging.
+    
+    Returns:
+        Dict[str, Dict[str, float]]: Dictionary mapping dataset names to their
+            quality metrics including QualityScore for ranking.
+            
+    Example:
+        >>> datasets = {
+        ...     'dataset1': [series1, series2, ...],
+        ...     'dataset2': [series3, series4, ...]
+        ... }
+        >>> summaries = compare_datasets(datasets, period=24)
+        >>> print_comparison(summaries, sort_by='QualityScore')
     """
     summaries = {
         name: summarize_dataset_medians(lst, period=period, fs=fs,
@@ -603,7 +860,20 @@ def compare_datasets(
 
 def print_comparison(summaries: Dict[str, Dict[str, float]], sort_by: str = "QualityScore") -> None:
     """
-    Nicely formatted table for compare_datasets output (QUITO).
+    Print a nicely formatted comparison table for multiple datasets.
+    
+    Displays a table with quality metrics for each dataset, sorted by the
+    specified metric (default: QualityScore). Shows forecastability, seasonality
+    strength, missing ratio, and effective length for easy comparison.
+    
+    Args:
+        summaries (Dict[str, Dict[str, float]]): Dictionary mapping dataset names
+            to their quality metrics (output from compare_datasets).
+        sort_by (str, optional): Metric to sort by. Defaults to "QualityScore".
+            
+    Example:
+        >>> summaries = compare_datasets(datasets)
+        >>> print_comparison(summaries, sort_by='QualityScore')
     """
     order = sorted(summaries, key=lambda k: summaries[k].get(sort_by, 0.0), reverse=True)
     logger.info("\n" + "="*90)
@@ -628,7 +898,23 @@ def print_comparison(summaries: Dict[str, Dict[str, float]], sort_by: str = "Qua
 
 def seasonal_naive_smape(x: ArrayLike, period: int, n_test: Optional[int] = None) -> float:
     """
-    sMAPE (%) for seasonal naive: y_hat[t] = y[t-period]
+    Compute sMAPE for seasonal naive baseline forecast.
+    
+    Uses the seasonal naive method where y_hat[t] = y[t-period] as a baseline
+    for comparison. This provides a simple benchmark for forecastability assessment.
+    
+    Args:
+        x (ArrayLike): Input time series.
+        period (int): Seasonal period for naive forecast.
+        n_test (Optional[int]): Number of test points to evaluate.
+            If None, uses max(period, 20% of series length). Defaults to None.
+    
+    Returns:
+        float: sMAPE percentage (0-200), or NaN if series is too short.
+        
+    Example:
+        >>> smape = seasonal_naive_smape(series, period=24)
+        >>> # Returns: 15.3 (for 15.3% sMAPE)
     """
     x = _to_1d_numpy(x)
     x = x[~np.isnan(x)]
@@ -656,7 +942,25 @@ def plot_forecastability_cdf(
     save_path: Optional[str] = None
 ) -> None:
     """
-    Plot CDF of per-series forecastability for multiple datasets.
+    Plot cumulative distribution function (CDF) of forecastability across datasets.
+    
+    Creates a CDF plot showing the distribution of forecastability scores for
+    each dataset, enabling visual comparison of forecastability distributions.
+    
+    Args:
+        datasets (Dict[str, List[ArrayLike]]): Dictionary mapping dataset names
+            to lists of time series arrays.
+        period (Optional[int]): Seasonal period for STL decomposition.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        forecast_window (Optional[int]): Window size for forecastability averaging.
+        save_path (Optional[str]): Path to save the plot. If None, displays the plot.
+            Defaults to None.
+            
+    Note:
+        Requires matplotlib to be installed. If not available, logs a warning.
+        
+    Example:
+        >>> plot_forecastability_cdf(datasets, period=24, save_path='forecastability_cdf.png')
     """
     if not MPL_AVAILABLE:
         logger.warning("matplotlib not available. pip install matplotlib")
@@ -695,7 +999,24 @@ def plot_forecastability_cdf(
 
 def print_dataset_report(results: Dict) -> None:
     """
-    Console report (QUITO).
+    Print a comprehensive console report of dataset quality evaluation.
+    
+    Displays formatted statistics including total time points, number of series,
+    weighted and unweighted metrics, and simple interpretations of key metrics
+    (forecastability, missing ratio, stationarity).
+    
+    Args:
+        results (Dict): Results dictionary from evaluate_dataset() containing:
+            - total_time_points: Total number of time points
+            - num_series: Number of series evaluated
+            - avg_series_length: Average series length
+            - weighted_metrics: Weighted quality metrics
+            - unweighted_metrics: Unweighted quality metrics
+            - num_failed: Number of failed evaluations (optional)
+            
+    Example:
+        >>> results = evaluate_dataset(series_list)
+        >>> print_dataset_report(results)
     """
     logger.info("\n" + "="*70)
     logger.info("QUITO: DATASET QUALITY EVALUATION REPORT")
@@ -755,10 +1076,31 @@ def evaluate_dataset_from_file(
     verbose: bool = True
 ) -> Dict:
     """
-    Convenience loader:
-      - .npy: expects (N,) or (M,N) float arrays
-      - .csv/.txt: tries pandas (if available) else numpy genfromtxt
-    Each row is treated as a series for 2D inputs; 1D -> single series.
+    Convenience function to evaluate dataset quality directly from file.
+    
+    Loads time series data from various file formats and evaluates quality:
+    - .npy: Expects (N,) or (M,N) float arrays
+    - .csv/.txt: Uses pandas (if available) or numpy genfromtxt
+    Each row is treated as a separate series for 2D inputs; 1D -> single series.
+    
+    Args:
+        file_path (str): Path to data file (.npy, .csv, or .txt).
+        period (Optional[int]): Seasonal period for STL decomposition.
+        fs (float, optional): Sampling frequency. Defaults to 1.0.
+        compute_adf (bool, optional): Whether to compute ADF test. Defaults to False.
+        forecast_window (Optional[int]): Window size for forecastability averaging.
+        fill_for_metrics (str, optional): Fill strategy for CV computation.
+            Defaults to 'none'.
+        verbose (bool, optional): Whether to print report. Defaults to True.
+    
+    Returns:
+        Dict: Quality evaluation results (same format as evaluate_dataset).
+        
+    Raises:
+        ValueError: If file format is unsupported or data shape is invalid.
+        
+    Example:
+        >>> results = evaluate_dataset_from_file('data/my_dataset.npy', period=24)
     """
     _, ext = os.path.splitext(file_path.lower())
     data = None
@@ -802,18 +1144,59 @@ def load_time_series_from_parquet(
     use_all_indices: bool = False
 ) -> List[np.ndarray]:
     """
-    Load parquet file and extract time series with truncation/sampling.
+    Load time series data from parquet file with flexible extraction options.
+    
+    Supports multiple data formats:
+    - Multi-series format: parquet with 'item_id' column (one series per item)
+    - Single series format: parquet without 'item_id' (one or more columns)
+    - Multi-index format: columns starting with 'ind_' are treated as separate series
+    
+    Automatically handles date sorting, series truncation, and sampling strategies
+    for large datasets.
     
     Args:
-        file_path: Path to parquet file
-        value_col: Name of the value column (default: 'value')
-        max_length: Maximum length per series (truncate if longer)
-        max_series: Maximum number of series to sample per file
-        sampling_strategy: 'random', 'first', 'last', or 'uniform'
-        use_all_indices: If True, use all columns starting with 'ind_' as separate series
+        file_path (Union[str, Path]): Path to parquet file.
+        value_col (str, optional): Name of the value column. Defaults to 'value'.
+        max_length (Optional[int]): Maximum length per series. If series is longer,
+            truncates to the most recent max_length points. Defaults to None.
+        max_series (Optional[int]): Maximum number of series to sample per file.
+            If None, uses all series. Defaults to None.
+        sampling_strategy (str, optional): Strategy for sampling series when
+            max_series is set. Options:
+            - 'random': Random sampling (with seed=42 for reproducibility)
+            - 'first': Take first N series
+            - 'last': Take last N series
+            - 'uniform': Uniformly spaced sampling
+            Defaults to 'random'.
+        use_all_indices (bool, optional): If True, extract all columns starting
+            with 'ind_' as separate series. Useful for multi-variate time series.
+            Defaults to False.
     
     Returns:
-        List of time series arrays
+        List[np.ndarray]: List of time series arrays, one per series extracted.
+            Each array is 1D and sorted by date.
+            
+    Raises:
+        ImportError: If pandas is not available (required for parquet loading).
+        ValueError: If sampling_strategy is unknown.
+        
+    Note:
+        - Automatically detects date columns: 'date_time', 'date', 'datetime', 'timestamp'
+        - Sorts all series by date before extraction
+        - For multi-series format, extracts one series per unique 'item_id'
+        - Falls back to numeric columns if specified value_col is not found
+        
+    Example:
+        >>> # Load all series from parquet
+        >>> series_list = load_time_series_from_parquet('data.parquet')
+        >>> 
+        >>> # Load with truncation and sampling
+        >>> series_list = load_time_series_from_parquet(
+        ...     'data.parquet',
+        ...     max_length=1000,
+        ...     max_series=100,
+        ...     sampling_strategy='uniform'
+        ... )
     """
     if not PANDAS_AVAILABLE:
         raise ImportError("pandas is required to load parquet files")

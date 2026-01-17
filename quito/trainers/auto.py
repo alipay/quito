@@ -37,15 +37,32 @@ class AutoTrainer:
                     use_gpu: int = 1, 
                     **kwargs) -> BaseTrainer:
         """
-        Load a model from configuration.
+        Create a trainer instance from configuration.
+        
+        Automatically selects the appropriate trainer class based on
+        config.trainer_name and initializes it with the provided model
+        and datasets.
         
         Args:
-            config: Model configuration object
-            local_rank: Local rank for distributed training
-            **kwargs: Additional arguments to pass to the model constructor
-            
+            model (BaseModel): Model to train.
+            train_dataset (Optional[Dataset]): Training dataset. Defaults to None.
+            eval_dataset (Optional[Dataset]): Evaluation dataset. Defaults to None.
+            config (Optional[TrainerConfig]): Training configuration.
+                Must contain trainer_name field. Defaults to None.
+            local_rank (int, optional): Local rank for distributed training.
+                Defaults to -1 (CPU mode).
+            global_rank (int, optional): Global rank for distributed training.
+                Defaults to -1.
+            world_size (int, optional): World size for distributed training.
+                Defaults to -1.
+            use_gpu (int, optional): Whether to use GPU. Defaults to 1.
+            **kwargs: Additional arguments passed to trainer constructor.
+        
         Returns:
-            Initialized model instance
+            BaseTrainer: Initialized trainer instance.
+            
+        Raises:
+            ValueError: If trainer_name is not found in registry.
         """
         trainer_cls = BaseTrainer.REGISTRY[config.trainer_name]
         if trainer_cls is None:
