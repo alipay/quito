@@ -17,14 +17,19 @@ import logging
 import sys
 from pathlib import Path
 import torch
+from omegaconf import OmegaConf, DictConfig
+from torch.utils.data import DataLoader
 import ray
-from typing import Dict, List
+from typing import Dict, Any
+import traceback
+from copy import deepcopy
+import time
+import json
 
-from quito.config.auto import AutoConfig
+from quito.config import AutoConfig
 from quito.config.training import TaskType, ModeType
-from quito.models.auto import AutoModel
-from quito.trainers.auto import AutoTrainer
-from quito.utils.distributed import setup_evaluation
+from quito.models import AutoModel
+from quito.utils.distributed import setup
 from quito.utils.common import set_seed
 from quito.datasets import load_datasets
 
@@ -32,100 +37,13 @@ from quito.datasets import load_datasets
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-@ray.remote(num_gpus=1)
-class ModelEvaluator:
-    """
-    Ray actor for distributed model evaluation.
-    
-    Each actor evaluates the model on a subset of test data using a single GPU.
-    This enables parallel evaluation across multiple GPUs.
-    
-    Attributes:
-        config: Model and data configuration
-        gpu_id: GPU ID assigned to this actor
-    """
-    
-    def __init__(self, config, gpu_id: int):
-        """
-        Initialize the evaluator actor.
-        
-        Args:
-            config: Configuration dictionary
-            gpu_id: GPU ID for this actor
-        """
-        self.config = config
-        self.gpu_id = gpu_id
-        torch.cuda.set_device(gpu_id)
-        
-        # Load configuration
-        data_config, model_config, training_config = AutoConfig.from_config(
-            config, rank=0, world_size=1, local_rank=gpu_id
-        )
-        
-        # Create model
-        self.model = AutoModel.from_config(config=model_config, local_rank=gpu_id)
-        self.model.eval()
-        
-        # Load test dataset
-        test_dataset = load_datasets(
-            data_config=data_config,
-            task=TaskType.EVALUATE,
-            mode=ModeType.TEST
-        )
-        
-        # Create trainer for evaluation
-        self.trainer = AutoTrainer.from_config(
-            model=self.model,
-            train_dataset=None,
-            eval_dataset=test_dataset,
-            config=training_config,
-            local_rank=gpu_id,
-            global_rank=0,
-            world_size=1,
-            use_gpu=1,
-        )
-    
-    def evaluate_user(self, user_ids: List[str]) -> Dict:
-        """
-        Evaluate model on a subset of users.
-        
-        Args:
-            user_ids: List of user IDs to evaluate
-            
-        Returns:
-            Dictionary containing evaluation metrics
-        """
-        # Note: This is a simplified version. In practice, you would
-        # filter the dataset by user_ids and evaluate
-        results = self.trainer.evaluate()
-        return results
-    
-    def get_stats(self) -> Dict:
-        """
-        Get evaluation statistics.
-        
-        Returns:
-            Dictionary containing evaluation metrics
-        """
-        results = self.trainer.evaluate()
-        return results
-
-
 def parse_args():
-    """
-    Parse command line arguments for evaluation.
-    
-    Returns:
-        argparse.Namespace: Parsed command line arguments.
-    """
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Evaluate time series forecasting models using YAML configuration",
+        description="Test time series forecasting models using YAML configuration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-    python quito/scripts/evaluate.py \\
-        --config_path configs/evaluate/patchtst/config.yaml \\
-        --num_gpus 2
+    Examples:
         """
     )
 
@@ -138,90 +56,234 @@ Examples:
     parser.add_argument(
         "--num_gpus",
         type=int,
-        default=1,
-        help="Number of GPUs to use for evaluation (must be >= 1)"
+        required=False,
+        default=1  # num of gpus of ray cluster
     )
+
     return parser.parse_args()
 
 
+@ray.remote
+class ModelEvaluator:
+    """
+    Ray Actor for distributed model evaluation.
+
+    Keeps model in GPU memory across multiple evaluations.
+    """
+
+    def __init__(self, model_config: DictConfig, training_config: DictConfig):
+        """Initialize actor with model loaded once."""
+        # Set seed
+        set_seed(training_config.seed)
+        # Load model once (stays in GPU memory)
+        self.model = AutoModel.from_config(model_config, local_rank=-1)
+        # load from checkpoint
+        # setup evaluation metrics
+        # Setup device
+        if torch.cuda.is_available():
+            self.device = 'cuda:0'
+        else:
+            self.device = 'cpu'
+
+        self.model.device = self.device
+        self.model = self.model.to(self.device)
+        if training_config.checkpoint_path:
+            self.model.load(training_config.checkpoint_path)
+            print(f'Model loaded from checkpoint {training_config.checkpoint_path}')
+
+        self.model.metrics = training_config.eval_metrics
+
+        # Store config
+        self.training_config = training_config
+        self.batch_size = training_config.eval_batch_size
+
+        # Tracking statistics
+        self.eval_count = 0
+        self.total_time = 0
+
+    def evaluate_user(self, user_id: int, dataset: Any) -> Dict[str, float]:
+        """
+        Evaluate a single user's dataset.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Dictionary of metrics
+        """
+        try:
+            start_time = time.time()
+            # get data
+            dataset = deepcopy(dataset)
+            # modify dataset inplace to create user-specific dataset
+            dataset.select_user_data(user_id)
+            # Create dataloader
+            dl = DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.training_config.num_workers # number of dataset workers
+            )
+
+            # Initialize metrics
+            total_loss_dict = {}
+            n_samples = 0
+
+            # Evaluate batches
+            with torch.no_grad():
+                for batch_idx, batch in enumerate(dl):
+                    # Evaluate step
+                    loss_dict, predictions = self.model.eval_step(batch)
+                    batch_size = len(predictions)
+
+                    # Accumulate losses
+                    for k, v in loss_dict.items():
+                        v = v.item() if torch.is_tensor(v) else v
+                        v_scaled = v * batch_size
+
+                        if k.name not in total_loss_dict:
+                            total_loss_dict[k.name] = v_scaled
+                        else:
+                            total_loss_dict[k.name] += v_scaled
+
+                    n_samples += batch_size
+
+            # Average metrics
+            avg_metrics = {}
+            for k, v in total_loss_dict.items():
+                avg_metrics[k] = v / n_samples if n_samples > 0 else 0.0
+
+            # Update tracking
+            elapsed = time.time() - start_time
+            self.eval_count += 1
+            self.total_time += elapsed
+
+            print(
+                f"Evaluated user {user_id}: {avg_metrics} "
+                f"(took {elapsed:.2f}s)"
+            )
+
+            return {
+                "user_id": user_id,
+                "metrics": avg_metrics,
+                "n_samples": n_samples,
+                "eval_time": elapsed
+            }
+
+        except Exception as e:
+            logging.error(f"Error evaluating user {user_id}: {str(e)}")
+            logging.error(f"[User id {user_id}] Traceback:\n{traceback.format_exc()}")
+
+            return {
+                "user_id": user_id,
+                "error": str(e),
+                "metrics": {},
+                "n_samples": 0
+            }
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get actor statistics."""
+        return {
+            "eval_count": self.eval_count,
+            "total_time": self.total_time,
+            "avg_time_per_eval": self.total_time / self.eval_count if self.eval_count > 0 else 0
+        }
+
+
 def main():
-    """
-    Main evaluation function.
-    
-    Orchestrates the evaluation process:
-    1. Parse command line arguments
-    2. Set up evaluation environment
-    3. Load configuration
-    4. Initialize Ray cluster
-    5. Create evaluator actors
-    6. Run distributed evaluation
-    7. Aggregate and report results
-    
-    Raises:
-        RuntimeError: If evaluation fails.
-        AssertionError: If num_gpus < 1.
-    """
+    """Main testing function."""
     args = parse_args()
-    
-    assert args.num_gpus >= 1, "Evaluation only supports GPU, set num_gpus >= 1"
-    
-    # Set up evaluation environment
-    config, output_dir = setup_evaluation(
-        args.config_path, 
-        mode=TaskType.EVALUATE
-    )
-    
-    # Set random seed
-    set_seed(config.training.seed)
-    
-    # Save configs
-    data_config, model_config, training_config = AutoConfig.from_config(
-        config, rank=0, world_size=1, local_rank=0
-    )
-    data_config.save(os.path.join(output_dir, 'data_config.yaml'))
-    model_config.save(os.path.join(output_dir, 'model_config.yaml'))
-    training_config.save(os.path.join(output_dir, 'training_config.yaml'))
-    
-    # Load test dataset
-    test_dataset = load_datasets(
-        data_config=data_config,
-        task=TaskType.EVALUATE,
-        mode=ModeType.TEST
-    )
-    logging.info(f"Test dataset size: {len(test_dataset)} samples")
-    
-    # Initialize Ray
-    ray.init(ignore_reinit_error=True, logging_level=logging.INFO)
-    
+    # get evaluation setup
+    config, output_dir = setup(args.config_path, mode=TaskType.EVALUATE)
+    # load config
+    data_config, model_config, training_config = AutoConfig.from_config(config=config, rank=-1, world_size=-1,
+                                                                        local_rank=-1)
+    # initialize ray cluster for distributed training
+    ray.init(num_gpus=args.num_gpus)
+
     try:
-        # Create evaluator actors
+        datasets = load_datasets(
+            data_config=data_config,
+            task=TaskType.EVALUATE,
+            mode=ModeType.TEST,
+            cleanup=False,
+            concat=False,
+        )
+        dataset_refs = [ray.put(ds) for ds in datasets]
+        if args.num_gpus > 0:
+            evaluator_cls = ModelEvaluator.options(num_gpus=1)
+        else:
+            evaluator_cls = ModelEvaluator
+        # Create evaluator actors (one per GPU)
+        num_workers = max(1, args.num_gpus)
+        logging.info(f"Creating {num_workers} evaluator actors")
         evaluators = [
-            ModelEvaluator.remote(config, gpu_id=i)
-            for i in range(args.num_gpus)
+            evaluator_cls.remote(model_config, training_config)
+            for _ in range(num_workers)
         ]
-        
-        # For simplicity, evaluate on all data with first evaluator
-        # In practice, you would split the data across evaluators
-        logging.info("Starting evaluation...")
-        results = ray.get(evaluators[0].get_stats.remote())
-        
-        logging.info("=" * 80)
-        logging.info("Evaluation completed successfully!")
-        logging.info('The results are: \n')
-        logging.info(results)
-        
-        # Save results
-        import json
-        results_path = os.path.join(output_dir, 'evaluation_results.json')
-        with open(results_path, 'w') as f:
-            json.dump(results, f, indent=2)
-        logging.info(f"Results saved to {results_path}")
-        
-    except Exception as e:
-        logging.error(f"Evaluation failed: {e}")
-        raise
+
+        # Prepare evaluation tasks
+        tasks = []
+        for dataset_idx, dataset in enumerate(datasets):
+            user_ids = sorted(dataset.get_all_ids())
+            for user_id in user_ids:
+                tasks.append((dataset_idx, int(user_id)))
+
+        logging.info(f"Total tasks to evaluate: {len(tasks)}")
+
+        # Distribute tasks round-robin across evaluators
+        futures = []
+        results_metadata = {}
+
+        for task_idx, (dataset_idx, user_id) in enumerate(tasks):
+            evaluator_id = task_idx % num_workers
+            evaluator = evaluators[evaluator_id]
+            future = evaluator.evaluate_user.remote(user_id, dataset_refs[dataset_idx])
+            futures.append(future)
+            results_metadata[len(futures) - 1] = {
+                "dataset_idx": dataset_idx,
+                "user_id": user_id,
+                "evaluator_id": evaluator_id
+            }
+
+        # Collect results with progress tracking
+        logging.info("Starting evaluation")
+        results = []
+
+        for future_idx, future in enumerate(futures):
+            try:
+                result = ray.get(future)  # 5 min timeout per task
+                results.append(result)
+
+                if (future_idx + 1) % max(1, len(futures) // 10) == 0:
+                    logging.info(f"Progress: {future_idx + 1}/{len(futures)} evaluations complete")
+
+            except ray.exceptions.GetTimeoutError:
+                logging.error(f"Task {future_idx} timed out")
+                results.append({
+                    "user_id": results_metadata[future_idx]["user_id"],
+                    "error": "Timeout",
+                    "metrics": {}
+                })
+            except KeyboardInterrupt as e:
+                raise KeyboardInterrupt from e
+
+            except Exception as e:
+                logging.error(f"Task {future_idx} failed: {str(e)}")
+                results.append({
+                    "user_id": results_metadata[future_idx]["user_id"],
+                    "error": str(e),
+                    "metrics": {}
+                })
+
+        model_name = model_config.model_name
+        with open(os.path.join(output_dir, f'eval_results_{model_name}.json'), 'w') as f:
+            final_results = {'final_results': results, 'model_name': model_name}
+            json.dump(final_results, f)
+
     finally:
         ray.shutdown()
+        logging.info("Ray cluster shut down")
 
 
 if __name__ == "__main__":

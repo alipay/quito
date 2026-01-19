@@ -16,13 +16,14 @@ import logging
 import sys
 from pathlib import Path
 import torch
-import torch.distributed as dist
+from omegaconf import OmegaConf, DictConfig
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from quito.config.auto import AutoConfig
 from quito.config.training import TaskType, ModeType
 from quito.models.auto import AutoModel
 from quito.trainers.auto import AutoTrainer
-from quito.utils.distributed import setup_train, setup_logging
+from quito.utils.distributed import setup, DistributedGroupManager
 from quito.utils.common import set_seed
 from quito.datasets import load_datasets
 
@@ -63,93 +64,82 @@ Examples:
     return parser.parse_args()
 
 
-def main():
-    """
-    Main pre-training function.
-    
-    Orchestrates the pre-training process:
-    1. Parse command line arguments
-    2. Set up distributed training environment
-    3. Load configuration
-    4. Initialize datasets
-    5. Create model and trainer
-    6. Run training
-    
-    Raises:
-        RuntimeError: If training fails.
-    """
+def main(config=None):
+    """Main training function."""
     args = parse_args()
-    
-    # Set up distributed training
-    rank, world_size, local_rank, config, output_dir = setup_train(
-        args.config_path, 
-        mode=TaskType.PRE_TRAIN
-    )
-    
-    # Set random seed
-    set_seed(config.training.seed + local_rank)
-    
-    # Save configs
+    if config is None:
+        config_source = args.config_path
+    else:
+        config_source = config
+
+    rank, world_size, local_rank, config, output_dir = setup(config_path_or_obj=config_source, mode=TaskType.PRE_TRAIN)
+
+    # load config
+    data_config, model_config, training_config = AutoConfig.from_config(config, rank=rank, world_size=world_size,
+                                                                        local_rank=local_rank)
+
+    # save config
     if rank == 0:
-        data_config, model_config, training_config = AutoConfig.from_config(
-            config, rank=rank, world_size=world_size, local_rank=local_rank
-        )
         data_config.save(os.path.join(output_dir, 'data_config.yaml'))
         model_config.save(os.path.join(output_dir, 'model_config.yaml'))
         training_config.save(os.path.join(output_dir, 'training_config.yaml'))
-    else:
-        data_config, model_config, training_config = AutoConfig.from_config(
-            config, rank=rank, world_size=world_size, local_rank=local_rank
+
+    with DistributedGroupManager(backend=training_config.ddp_backend, rank=rank, local_rank=local_rank,
+                                 world_size=world_size) as group_manager:
+        # Set up distributed training if available
+        # Set seed, each process get a different seed
+        set_seed(training_config.seed + local_rank)
+        # Init training dataset
+        train_dataset = load_datasets(
+            data_config=data_config,
+            task=TaskType.PRE_TRAIN,
+            mode=ModeType.TRAIN
         )
-    
-    # Load datasets
-    train_dataset = load_datasets(
-        data_config=data_config,
-        task=TaskType.PRE_TRAIN,
-        mode=ModeType.TRAIN
-    )
-    valid_dataset = load_datasets(
-        data_config=data_config,
-        task=TaskType.PRE_TRAIN,
-        mode=ModeType.VALID
-    )
-    
-    if rank == 0:
+        valid_dataset = load_datasets(
+            data_config=data_config,
+            task=TaskType.PRE_TRAIN,
+            mode=ModeType.VALID
+        )
+
         logging.info(f"Training dataset size: {len(train_dataset)} samples")
         logging.info(f"Validation dataset size: {len(valid_dataset)} samples")
-    
-    # Create model
-    model = AutoModel.from_config(config=model_config, local_rank=local_rank)
-    if rank == 0:
+
+        # Create model
+        model = AutoModel.from_config(config=model_config, local_rank=local_rank)
         logging.info(f"Model created: {model.__class__.__name__}")
         logging.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
-    
-    # Create trainer
-    trainer = AutoTrainer.from_config(
-        model=model,
-        train_dataset=train_dataset,
-        eval_dataset=valid_dataset,
-        config=training_config,
-        local_rank=local_rank,
-        global_rank=rank,
-        world_size=world_size,
-        use_gpu=args.use_gpu,
-    )
-    if rank == 0:
+
+        if torch.cuda.is_available():
+            model = model.to(local_rank)
+            if world_size > 1:
+                model = DDP(model, device_ids=[local_rank],
+                            find_unused_parameters=training_config.ddp_find_unused_parameters)
+        else:
+            # CPU mode, no DDP wrapping needed for single process, or use specialized CPU DDP if needed
+            logging.info("Running on CPU, skipping DDP wrapping.")
+
+        # Create trainer
+        trainer = AutoTrainer.from_config(
+            model=model,
+            train_dataset=train_dataset,
+            eval_dataset=valid_dataset,
+            config=training_config,
+            local_rank=local_rank,
+            global_rank=rank,
+            world_size=world_size,
+            use_gpu=args.use_gpu,
+        )
         logging.info(f"Trainer {trainer.__class__.__name__} created ...")
-    
-    # Train
-    try:
-        results = trainer.train()
-        if rank == 0:
+
+        try:
+            results = trainer.train()
+
             logging.info("=" * 80)
-            logging.info("Pre-training completed successfully!")
+            logging.info("Training completed successfully!")
             logging.info('The results are: \n')
             logging.info(results)
-    except Exception as e:
-        logging.error(f"Pre-training failed: {e}")
-        raise
 
+        except Exception as e:
+            logging.error(f"Training failed with error: {e}, peform cleaning ...")
+            raise
 
-if __name__ == "__main__":
-    main()
