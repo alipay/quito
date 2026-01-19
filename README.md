@@ -85,6 +85,15 @@ pip install chronos-forecasting
 # Dataset quality analysis
 pip install statsmodels arch matplotlib
 ```
+### Data Preparation
+
+Download data from ..., place the data in `examples/datasets/cluster_data`.
+
+### Model Preparation
+
+Download model checkpoints here and place them in `models/{model_name}` 
+where model_name is one of 
+['chronos', 'tirex', 'timesfm', 'itransformer', 'patchtst', 'dlinear', 'crossformer', ''].
 
 ## The QuitoBench Dataset
 

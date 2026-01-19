@@ -108,7 +108,7 @@ Documentation = "https://github.com/alipay/quito-10b/tree/main/docs"
 "Bug Tracker" = "https://github.com/alipay/quito-10b/issues"
 
 [project.scripts]
-quito-cli = "cli:main"
+quito-cli = "quito.cli:main"
 
 [tool.setuptools]
 packages = ["quito", "quito.config", "quito.models", "quito.trainers", "quito.utils", "quito.scripts"]
