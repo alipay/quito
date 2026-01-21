@@ -7,8 +7,8 @@ data:
     data_dir: "examples/datasets/cluster_data"
     seq_len: 576  # Input sequence length
     decoder_label_len: 48  # Label length for decoder start
-    forecast_horizon: 48  # Prediction length
-    features: "M"  # M: multivariate->multivariate, S: univariate->univariate
+    forecast_horizon: 512  # Prediction length
+    features: "S"  # M: multivariate->multivariate, S: univariate->univariate
     normalize: True
     global_test_point: '2023-07-28 00:00:00'
   datasets:
@@ -92,7 +92,7 @@ checkpointing:
   
 # Logging Configuration
 logging:
-  output_dir: "outputs/chronos/574_48_M"  # Output directory for all outputs, e.g., checkpoints and logs
+  output_dir: "outputs/chronos/576_512_S"  # Output directory for all outputs, e.g., checkpoints and logs
   logging_steps: 100  # Log every N steps, None if dont want to log training measures at steps
   logging_epochs: 1 # log every N epochs, None if dont want to log training measures at epoch
   sync_loss: False # If true, training loss will be synced across devices

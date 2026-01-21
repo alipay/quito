@@ -5,12 +5,12 @@
 data:
   common:
     data_dir: "examples/datasets/cluster_data"
-    seq_len: 512  # Input sequence length
+    seq_len: 1024  # Input sequence length
     decoder_label_len: 48  # Label length for decoder start
-    forecast_horizon: 96  # Prediction length
-    features: "M"  # M: multivariate->multivariate, S: univariate->univariate
+    forecast_horizon: 512  # Prediction length
+    features: "S"  # M: multivariate->multivariate, S: univariate->univariate
     normalize: True
-    global_test_point: '2023-09-01 00:00:00'
+    global_test_point: '2023-07-28 00:00:00'
   datasets:
     TEST_DATA_MIN: 
       file_name: "open_min_data.parquet"

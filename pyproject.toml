@@ -39,8 +39,8 @@ dependencies = [
     "torchvision>=0.23.0",
     "numpy>=2.2.6",
     "pandas>=2.2.3",
-    "scipy>=1.16.3",
-    "scikit-learn>=1.8.0",
+    "scipy",
+    "scikit-learn",
 
     # Deep learning and training
     "transformers>=4.57.1",

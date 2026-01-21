@@ -10,7 +10,7 @@ data:
     forecast_horizon: 48  # Prediction length
     features: "M"  # M: multivariate->multivariate, S: univariate->univariate
     normalize: True
-    global_test_point: '2023-09-01 00:00:00'
+    global_test_point: '2023-07-28 00:00:00'
   datasets:
     TEST_DATA_MIN: 
       file_name: "open_min_data.parquet"

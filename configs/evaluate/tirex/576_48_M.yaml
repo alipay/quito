@@ -48,8 +48,8 @@ data:
     
 # Model Configuration
 model:
-  model_name: 'ChronosV2' # the name of the model class
-  pretrained_model_name_or_path: './models/chronos'
+  model_name: 'TiRex' # the name of the model class
+  pretrained_model_name_or_path: './models/tirex'
 
 # Training Configuration
 training:
@@ -92,7 +92,7 @@ checkpointing:
   
 # Logging Configuration
 logging:
-  output_dir: "outputs/chronos/574_48_M"  # Output directory for all outputs, e.g., checkpoints and logs
+  output_dir: "outputs/tirex/574_48_M"  # Output directory for all outputs, e.g., checkpoints and logs
   logging_steps: 100  # Log every N steps, None if dont want to log training measures at steps
   logging_epochs: 1 # log every N epochs, None if dont want to log training measures at epoch
   sync_loss: False # If true, training loss will be synced across devices

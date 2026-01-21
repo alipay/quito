@@ -251,30 +251,11 @@ def main():
         results = []
 
         for future_idx, future in enumerate(futures):
-            try:
-                result = ray.get(future)  # 5 min timeout per task
-                results.append(result)
+            result = ray.get(future)  # 5 min timeout per task
+            results.append(result)
 
-                if (future_idx + 1) % max(1, len(futures) // 10) == 0:
-                    logging.info(f"Progress: {future_idx + 1}/{len(futures)} evaluations complete")
-
-            except ray.exceptions.GetTimeoutError:
-                logging.error(f"Task {future_idx} timed out")
-                results.append({
-                    "user_id": results_metadata[future_idx]["user_id"],
-                    "error": "Timeout",
-                    "metrics": {}
-                })
-            except KeyboardInterrupt as e:
-                raise KeyboardInterrupt from e
-
-            except Exception as e:
-                logging.error(f"Task {future_idx} failed: {str(e)}")
-                results.append({
-                    "user_id": results_metadata[future_idx]["user_id"],
-                    "error": str(e),
-                    "metrics": {}
-                })
+            if (future_idx + 1) % max(1, len(futures) // 10) == 0:
+                logging.info(f"Progress: {future_idx + 1}/{len(futures)} evaluations complete")
 
         model_name = model_config.model_name
         with open(os.path.join(output_dir, f'eval_results_{model_name}.json'), 'w') as f:

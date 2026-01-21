@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory containing the YAML config files
-MODEL_NAME="chronos"
+MODEL_NAME="tirex"
 NUM_GPUS=1
 
 CONFIG_DIR="configs/evaluate/$MODEL_NAME"
