@@ -291,66 +291,65 @@ class TimeSeriesDataset(Dataset):
             - seq_y_mark: Time features for output [label_len + pred_len, time_features]
         """
         i, j = self._fetch_sample_idx(idx)
+        data = self.data
         # get_target
         if self.features == Features.M:
-            data = self.data
             target_s = 0
             target_e = self.data.shape[-1]
         else:
-            data = rearrange(self.data, 'n l c -> (n c) l 1') # (N * C) l 1
             target_s = 0
             target_e = 1
-        
+
         # Input sequence
         s_begin = j
         s_end = s_begin + self.seq_len
         y_begin = s_end - self.decoder_label_len
-        y_end = s_end + self.forecast_horizon 
+        y_end = s_end + self.forecast_horizon
 
         seq_x = data[i, s_begin:s_end, :]
         seq_y = data[i, y_begin:y_end, target_s:target_e]
         seq_x_mark = self.time_features[s_begin:s_end, :]
         seq_y_mark = self.time_features[y_begin:y_end, :]
-        
+
         # Convert to torch tensors
         seq_x = torch.from_numpy(seq_x).float()
         seq_y = torch.from_numpy(seq_y).float()
         seq_x_mark = torch.from_numpy(seq_x_mark).float()
         seq_y_mark = torch.from_numpy(seq_y_mark).float()
-        
+
         assert seq_x.ndim == 2
         assert seq_y.ndim == 2
         assert seq_x_mark.ndim == 2
         assert seq_y_mark.ndim == 2
 
         out_dict = {
-            'x': seq_x, 
+            'x': seq_x,
             'y': seq_y,
             'x_mark': seq_x_mark,
             'y_mark': seq_y_mark
             }
-        
+
         return out_dict
-    
+
     def inverse_transform(self, data: np.ndarray) -> np.ndarray:
         """
         Inverse transform normalized data back to original scale.
-        
+
         If normalization was applied during initialization, this method
         reverses the normalization by multiplying by std and adding mean.
-        
+
         Args:
             data (np.ndarray): Normalized data to transform back.
-        
+
         Returns:
             np.ndarray: Data in original scale (if normalize=True) or
                 unchanged (if normalize=False).
         """
         if self.normalize:
             return data * self.std + self.mean
-        
+
         return data
-    
+
     def load_data(self):
         # Process dataframe - use absolute path
         file_path = (self.data_dir / self.ds_config.file_name).resolve()
@@ -364,11 +363,11 @@ class TimeSeriesDataset(Dataset):
             raise ValueError("No date column found in dataset")
 
         self._df = df.reset_index(drop=True)
-    
+
     def process_raw_df(self):
         if self._df is None:
             raise ValueError('dataframe is not loaded !!!')
-        
+
         df = self._df.copy() # do not modify the original df
         # datetime col to pd.datetime
         df[self.date_col] = pd.to_datetime(df[self.date_col])
@@ -384,7 +383,7 @@ class TimeSeriesDataset(Dataset):
             # make the data 3D of shape (n_item_id, n_rows, n_cols), assume each item_id has same length
             if self.ids: # getting dataframe with only ids
                 df = df[df['item_id'].isin(self.ids)]
-            
+
             df_sorted = df.sort_values(['item_id', self.date_col])
             unique_ids = df_sorted['item_id'].unique()
             single_id_df = df_sorted[df_sorted['item_id'] == unique_ids[0]].reset_index(drop=True)
@@ -401,13 +400,13 @@ class TimeSeriesDataset(Dataset):
             n_cols = len(numeric_cols)
             unique_ids = None
             id_mask = None
-        
+
         if 'cluster' in numeric_cols:
             n_cols = n_cols - 1
             numeric_cols.remove('cluster')
-        
+
         if self.global_test_point is not None:
-            # if global splitting point 
+            # if global splitting point
             train_valid_size = single_id_df[single_id_df[self.date_col] == self.global_test_point].index.item()
             train_size, valid_size, _ = self.ds_config.split(train_valid_size, test=False)
             test_size = n_rows_per_id - train_valid_size
@@ -419,14 +418,14 @@ class TimeSeriesDataset(Dataset):
         if id_mask is not None:
             id_mask = id_mask.reshape(n_ids, n_rows_per_id, 1) # (N_ids, n_rows, 1), this is a mask for the ids
             id_mask = np.repeat(id_mask, n_cols, axis=-1)
-            
+
         ts_series = df_sorted[self.date_col] # (n_rows, 1)
         mean = np.mean(data[:, :train_size, :], axis=1, keepdims=True)
         std = np.std(data[:, :train_size, :], axis=1, keepdims=True) + 1e-8
         data = (data - mean) / std
         # Time features
         time_features = self._process_time_features(ts_series) # L * n_ids, num_time_features
-        time_features = time_features.reshape(n_ids, n_rows_per_id, -1) 
+        time_features = time_features.reshape(n_ids, n_rows_per_id, -1)
         # select the appropriate data according to mode
         if self.mode == ModeType.TRAIN:
             border_s, border_e = 0, train_size
@@ -434,15 +433,17 @@ class TimeSeriesDataset(Dataset):
             border_s, border_e = train_size - self.seq_len, train_size + valid_size
         else:
             border_s, border_e = train_size + valid_size - self.seq_len, train_size + valid_size + test_size
-        
+
         data = data[:, border_s:border_e, :]
         time_features = time_features[0, border_s:border_e, :] # just use the first time features, because other ids have same time features
         if id_mask is not None:
             id_mask = id_mask[:, border_s:border_e, :]
-        
+
         # # reshape the data according to features
-        # if self.features == Features.S:
-        #     data = rearrange(data, 'n l c -> (n c) l 1') # (N * C) l 1
+        if self.features == Features.S:
+            data = rearrange(data, 'n l c -> (n c) l 1') # (N * C) l 1
+            if id_mask is not None:
+                id_mask = rearrange(id_mask, 'n l c -> (n c) l 1')
 
         self.feature_cols = numeric_cols
         self.data = data
