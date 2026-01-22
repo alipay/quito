@@ -5,10 +5,10 @@
 data:
   common:
     data_dir: "examples/datasets/cluster_data"
-    seq_len: 1024  # Input sequence length
+    seq_len: 96  # Input sequence length
     decoder_label_len: 48  # Label length for decoder start
-    forecast_horizon: 512  # Prediction length
-    features: "S"  # M: multivariate->multivariate, S: univariate->univariate
+    forecast_horizon: 48  # Prediction length
+    features: "M"  # M: multivariate->multivariate, S: univariate->univariate
     normalize: True
     global_test_point: '2023-07-28 00:00:00'
   datasets:
@@ -35,11 +35,11 @@ data:
       target: 'ind_1'
     
     # TEST_DATA_PRETRAIN: 
-    #   file_name: "test_data.parquet"
+    #   file_name: "/ossfs/workspace/ts_data_parquet/test_data.parquet"
     #   train_ratio: 0.5
     #   valid_ratio: 0.4
     #   test_ratio: 0.1
-    #   is_pretrain: True
+    #   is_pretrain: False
     #   freq: 'M'
     #   ds_cls: 'TimeSeriesDataset'
     #   ds_kwargs: {}
@@ -49,26 +49,12 @@ data:
 # Model Configuration
 model:
   model_name: 'PatchTST' # the name of the model class
-  # pretrained_model_name_or_path: '/ossfs/workspace/chronos'
-  # model_name: "tstransformer"  # tbe 
-  # time_pe_type: null
-  # feature_pe_type: null
-  # d_model: 512
-  # layers: ['feature_full', 'time_full', 'feature_full', 'time_full']
-  # d_model: 16  # Model dimension
-  # n_heads: 8  # Number of attention heads
-  # d_ff: 128  # Dimension of feedforward network
-  # dropout: 0.3  # Dropout rate
-  # activation: "gelu"  # Activation function
-  # norm: 'layer'
-  # patch_len: 16
-  # stride: 8
 
 # Training Configuration
 training:
   trainer_name: 'NaiveTrainer' # which trainer class to use ? the name of the trainer class
   num_epochs: 5  # Number of training epochs
-  batch_size: 128  # Training batch size per device
+  batch_size: 256  # Training batch size per device
   eval_batch_size: 128  # Evaluation batch size (if null, uses batch_size)
   learning_rate: 0.001  # Learning rate
   weight_decay: 0.0  # Weight decay for regularization
@@ -104,7 +90,7 @@ checkpointing:
   
 # Logging Configuration
 logging:
-  output_dir: "outputs/patchtst"  # Output directory for all outputs, e.g., checkpoints and logs
+  output_dir: "outputs/patchtst/96_48_M"  # Output directory for all outputs, e.g., checkpoints and logs
   logging_steps: 0  # Log every N steps, None if dont want to log training measures at steps
   logging_epochs: 0 # log every N epochs, None if dont want to log training measures at epoch
   sync_loss: False # If true, training loss will be synced across devices
@@ -129,4 +115,3 @@ resume:
 distributed:
   ddp_find_unused_parameters: True
   ddp_backend: "nccl"
-

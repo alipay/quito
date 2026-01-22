@@ -15,14 +15,14 @@ TRAINER_CONFIG_MAPPING = TrainerConfig.REGISTRY
 class AutoConfig:
     """
     Automatic configuration factory for QuitoBench.
-    
+
     This class automatically creates and configures ModelConfig, DataConfig, and
     TrainerConfig objects from a main YAML configuration file. It handles both
     local QuitoBench model configs and HuggingFace pretrained model configs.
-    
+
     The class intelligently determines the appropriate config classes based on
     model names and trainer names, enabling automatic discovery and instantiation.
-    
+
     Example:
         >>> from quito.config.auto import AutoConfig
         >>> data_config, model_config, training_config = AutoConfig.from_config(
@@ -32,15 +32,16 @@ class AutoConfig:
         ...     world_size=4
         ... )
     """
+
     @classmethod
     def from_config(cls, config: Union[DictConfig, str], local_rank=-1, rank=-1, world_size=1, **kwargs):
         """
         Create model, data, and training configurations from a main config file.
-        
+
         Parses a YAML configuration file (or DictConfig object) and automatically
         creates the appropriate configuration objects for data loading, model
         architecture, and training setup.
-        
+
         Args:
             config (Union[DictConfig, str]): Path to YAML config file or OmegaConf
                 DictConfig object containing all configuration sections.
@@ -51,19 +52,19 @@ class AutoConfig:
             world_size (int, optional): Total number of processes in distributed
                 training. Defaults to 1.
             **kwargs: Additional keyword arguments (currently unused).
-        
+
         Returns:
             Tuple[DataConfig, Union[ModelConfig, PretrainedConfig], TrainerConfig]:
                 A tuple containing:
                 - data_config: Data configuration for dataset loading
                 - model_config: Model configuration (local or HuggingFace)
                 - training_config: Training configuration with distributed settings
-                
+
         Raises:
             FileNotFoundError: If config file path doesn't exist.
             KeyError: If required configuration sections are missing.
             ValueError: If model or trainer names are not recognized.
-            
+
         Example:
             >>> data_cfg, model_cfg, train_cfg = AutoConfig.from_config(
             ...     "configs/evaluate/chronos/config.yaml",
@@ -73,10 +74,11 @@ class AutoConfig:
         if isinstance(config, str):
             config = OmegaConf.load(config)
 
-        # get model config 
+        # get model config
         data_config = cls._get_data_config(config)
         model_config = cls._get_model_config(config)
-        training_config = cls._get_training_config(config=config, rank=rank, local_rank=local_rank, world_size=world_size)
+        training_config = cls._get_training_config(config=config, rank=rank, local_rank=local_rank,
+                                                   world_size=world_size)
 
         return data_config, model_config, training_config
 
@@ -84,32 +86,32 @@ class AutoConfig:
     def _get_model_config(config: DictConfig) -> Union[ModelConfig, PretrainedConfig]:
         """
         Extract and create model configuration from main config.
-        
+
         Determines whether to use a local QuitoBench ModelConfig or load a
         HuggingFace PretrainedConfig based on the presence of
         'pretrained_model_name_or_path'. Handles special cases like TiRex.
-        
+
         Args:
             config (DictConfig): Main configuration dictionary containing
                 'model' and 'data.common' sections.
-        
+
         Returns:
             Union[ModelConfig, PretrainedConfig]: Model configuration object
                 with seq_len, forecast_horizon, and decoder_label_len set
                 from data configuration.
-                
+
         Raises:
             KeyError: If model configuration is missing required fields.
             ValueError: If model_name is not recognized in MODEL_CONFIG_MAPPING.
         """
-        # get model config 
+        # get model config
         model_config = config.model
         data_config = config.data.common
         # check for pretrained config (huggingface PretrainConfig) or local config (ModelConfig)
         if 'pretrained_model_name_or_path' in model_config and model_config.pretrained_model_name_or_path:
             # this will load pretrained model config.json from huggingface or local path
             if model_config.model_name == 'TiRex':
-                # for tirex, only checkpoint path is provided, the config is inside the construct a empty config file 
+                # for tirex, only checkpoint path is provided, the config is inside the construct a empty config file
                 model_config_name = f'TiRexModelConfig'
                 model_config_cls = MODEL_CONFIG_MAPPING[model_config_name]
                 curr_model_config = model_config_cls(**model_config)
@@ -129,31 +131,47 @@ class AutoConfig:
         seq_len = data_config.seq_len
         forecast_horizon = data_config.forecast_horizon
         decoder_label_len = data_config.decoder_label_len
+        features = data_config.features
+        if features == 'M':
+            input_dim = 5
+            output_dim = 5
+            enc_in = 5
+            c_out = 5
+        elif features == 'S':
+            input_dim = 1
+            output_dim = 1
+            enc_in = 1
+            c_out = 1
+
         # set data config and fetch corresponding model config class
         curr_model_config.seq_len = seq_len
         curr_model_config.forecast_horizon = forecast_horizon
         curr_model_config.decoder_label_len = decoder_label_len
         curr_model_config.model_name = model_config.model_name
+        curr_model_config.input_dim = input_dim
+        curr_model_config.output_dim = output_dim
+        curr_model_config.enc_in = enc_in
+        curr_model_config.c_out = c_out
 
         return curr_model_config
-    
+
     @staticmethod
     def _get_data_config(config: DictConfig):
         """
         Extract and create data configuration from main config.
-        
+
         Combines common data settings with dataset-specific configurations
         and training settings (batch_size, num_workers, etc.) to create
         a complete DataConfig object.
-        
+
         Args:
             config (DictConfig): Main configuration dictionary containing
                 'data.common', 'data.datasets', and 'training' sections.
-        
+
         Returns:
             DataConfig: Data configuration object with all dataset and
                 data loading parameters set.
-                
+
         Raises:
             KeyError: If required configuration sections are missing.
         """
@@ -173,28 +191,28 @@ class AutoConfig:
                                  shuffle=training_config.shuffle,
                                  dataset_configs=dataset_configs,
                                  global_test_point=common_config.global_test_point,
-                                )
+                                 )
         return data_config
-    
+
     @staticmethod
     def _get_training_config(config: DictConfig, local_rank, rank, world_size):
         """
         Extract and create training configuration from main config.
-        
+
         Collects all configuration sections except 'data' and 'model', flattens
         them into a single dictionary, and creates the appropriate TrainerConfig
         based on the 'trainer_name' field. Adds distributed training parameters.
-        
+
         Args:
             config (DictConfig): Main configuration dictionary.
             local_rank (int): Local rank for distributed training.
             rank (int): Global rank for distributed training.
             world_size (int): Total number of processes.
-        
+
         Returns:
             TrainerConfig: Training configuration object with all training,
                 optimization, logging, and distributed parameters set.
-                
+
         Raises:
             KeyError: If 'trainer_name' is missing or trainer not found in
                 TRAINER_CONFIG_MAPPING.
@@ -204,7 +222,7 @@ class AutoConfig:
         for k, v in config.items():
             if k not in ['data', 'model']:
                 training_config_dict.update(v)
-        
+
         trainer_name = training_config_dict['trainer_name']
         # get training config class
         trainer_config_name = f'{trainer_name}TrainerConfig'

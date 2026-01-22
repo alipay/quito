@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Directory containing the YAML config files
-MODEL_NAME="chronos"
-NUM_GPUS=1
-
-CONFIG_DIR="configs/evaluate/$MODEL_NAME"
+MODEL_NAME="patchtst"
+NUM_PROCESSES=1
+USE_GPU=1
+TUNING_CONFIG_PATH="configs/tune/$MODEL_NAME/tuning_config.yaml"
+CONFIG_DIR="configs/tune/$MODEL_NAME"
 
 # Optional: Specify a pattern to match only your specific config files
 # This pattern matches files like: 1152_576_S.yaml, 288_144_M.yaml, etc.
@@ -25,10 +26,10 @@ for config_file in "${config_files[@]}"; do
     # Skip if no files match the pattern
     [ -e "$config_file" ] || continue
     
-    echo "Running: evaluate $MODEL_NAME --config_path $config_file"
+    echo "Running: TUNE $MODEL_NAME --config_path $config_file --tuning_config_path $TUNING_CONFIG_PATH --num_processes $NUM_PROCESSES --use_gpu $USE_GPU"
     
     # Run the Python script with the current config
-    quito-cli evaluate --config_path "$config_file" --num_gpus $NUM_GPUS
+    quito-cli tune --config_path $config_file --tuning_config_path $TUNING_CONFIG_PATH --num_processes $NUM_PROCESSES --use_gpu $USE_GPU
 
     # Check if the previous command succeeded
     if [ $? -ne 0 ]; then

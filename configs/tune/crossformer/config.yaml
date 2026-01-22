@@ -48,7 +48,7 @@ data:
     
 # Model Configuration
 model:
-  model_name: 'PatchTST' # the name of the model class
+  model_name: 'CrossFormer' # the name of the model class
   # pretrained_model_name_or_path: '/ossfs/workspace/chronos'
   # model_name: "tstransformer"  # tbe 
   # time_pe_type: null
@@ -104,7 +104,7 @@ checkpointing:
   
 # Logging Configuration
 logging:
-  output_dir: "outputs/patchtst"  # Output directory for all outputs, e.g., checkpoints and logs
+  output_dir: "outputs/crossformer"  # Output directory for all outputs, e.g., checkpoints and logs
   logging_steps: 0  # Log every N steps, None if dont want to log training measures at steps
   logging_epochs: 0 # log every N epochs, None if dont want to log training measures at epoch
   sync_loss: False # If true, training loss will be synced across devices

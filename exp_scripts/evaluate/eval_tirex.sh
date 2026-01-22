@@ -24,9 +24,9 @@ echo "----------------------------------------"
 for config_file in "${config_files[@]}"; do
     # Skip if no files match the pattern
     [ -e "$config_file" ] || continue
-
+    
     echo "Running: evaluate $MODEL_NAME --config_path $config_file"
-
+    
     # Run the Python script with the current config
     quito-cli evaluate --config_path "$config_file" --num_gpus $NUM_GPUS
 
@@ -36,7 +36,7 @@ for config_file in "${config_files[@]}"; do
         echo "Stopping execution."
         exit 1
     fi
-
+    
     echo "Completed: $config_file"
     echo "----------------------------------------"
 done

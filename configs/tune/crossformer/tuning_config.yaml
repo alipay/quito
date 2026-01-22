@@ -1,7 +1,7 @@
 # define the search space here, parameters must be part of the ModelConfig
 # PatchTST
 model:
-  patch_len: 'tune.choice([8, 16, 32])'
+  seg_len: 'tune.choice([8, 16, 32])'
   d_model: 'tune.choice([64, 128, 256])'
   e_layers: 'tune.choice([2, 3, 4])'
 

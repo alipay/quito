@@ -243,8 +243,9 @@ def main():
             metric="best_metric",
             mode="min",
             num_samples=args.num_samples,
+            max_concurrent_trials=1,
         ),
-        run_config=tune.RunConfig(name='param_tuning', storage_path=output_dir)
+        run_config=tune.RunConfig(name='param_tuning', storage_path=output_dir),
     )
 
     try:
