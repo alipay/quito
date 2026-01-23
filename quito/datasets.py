@@ -469,10 +469,10 @@ class TimeSeriesDataset(Dataset):
         if self.id_mask is None:
             raise ValueError('id_mask is not available !!!')
 
+        assert self.id_mask.shape == self.data.shape
+
         mask = self.id_mask == user_id
-        # original shape
-        original_shape = self.data.shape
-        self.data = self.data[mask].reshape(1, original_shape[1], -1)
+        self.data = self.data[mask].reshape(-1, self.data.shape[1], self.data.shape[-1])
         
     def get_all_ids(self):
         if self._df is not None and 'item_id' in self._df.columns:
