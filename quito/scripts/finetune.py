@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 def parse_args():
     """
     Parse command line arguments for fine-tuning.
-    
+
     Returns:
         argparse.Namespace: Parsed command line arguments.
     """
@@ -62,6 +62,12 @@ Examples:
         default=1,
         help="Whether to use GPU (0 or 1)"
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="The seed"
+    )
     return parser.parse_args()
 
 
@@ -78,6 +84,10 @@ def main(config=None):
     # load config
     data_config, model_config, training_config = AutoConfig.from_config(config, rank=rank, world_size=world_size,
                                                                         local_rank=local_rank)
+
+    # overriding seed in config with args if it exists
+    if args.seed is not None:
+        training_config.seed = args.seed
 
     # save config
     if rank == 0:

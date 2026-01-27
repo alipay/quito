@@ -2,7 +2,9 @@
 
 # Directory containing the YAML config files
 MODEL_NAME="chronos"
-NUM_GPUS=1
+NUM_PROCESSES=1
+USE_GPU=1
+
 
 CONFIG_DIR="configs/evaluate/$MODEL_NAME"
 
@@ -28,7 +30,7 @@ for config_file in "${config_files[@]}"; do
     echo "Running: evaluate $MODEL_NAME --config_path $config_file"
     
     # Run the Python script with the current config
-    quito-cli evaluate --config_path "$config_file" --num_gpus $NUM_GPUS
+    quito-cli evaluate --config_path "$config_file" --num_processes $NUM_GPUS --use_gpu $USE_GPU
 
     # Check if the previous command succeeded
     if [ $? -ne 0 ]; then

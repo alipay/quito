@@ -425,3 +425,24 @@ class PyraFormerModelConfig(ModelConfig):
         """
         if isinstance(self.window_size, str):
             self.window_size = [int(x) for x in self.window_size.split(',')]
+
+
+@dataclass
+class ESModelConfig(ModelConfig):
+    """
+    Configuration for ETS model.
+    """
+    error: str = 'add'
+    trend: str = 'add'
+    seasonal: str = 'add'
+    seasonal_periods: Optional[int] = None
+    damped_trend: bool = False
+
+
+@dataclass
+class NaiveForecasterModelConfig(ModelConfig):
+    """
+    Configuration for NaiveForecaster model.
+    """
+    method: str = 'mean'
+    seasonal_period: int = 6

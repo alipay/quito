@@ -11,3 +11,5 @@ from .itransformer import ITransformer
 from .tsmixer import TSMixer
 from .crossformer import CrossFormer
 from .pyraformer import PyraFormer
+from .naive import NaiveForecaster
+from .es import ES

@@ -9,7 +9,7 @@ evaluation parameters.
 Usage:
     python quito/scripts/evaluate.py \\
         --config_path configs/evaluate/patchtst/config.yaml \\
-        --num_gpus 2
+        --num_processes 2
 """
 import os
 import argparse
@@ -54,10 +54,16 @@ def parse_args():
         help="Path to YAML config file (required)"
     )
     parser.add_argument(
-        "--num_gpus",
+        "--num_processes",
         type=int,
         required=False,
-        default=1  # num of gpus of ray cluster
+        default=1
+    )
+    parser.add_argument(
+        "--use_gpu",
+        type=int,
+        default=1,
+        help="Whether to use GPU (0 or 1)"
     )
 
     return parser.parse_args()
@@ -122,7 +128,7 @@ class ModelEvaluator:
                 dataset,
                 batch_size=self.batch_size,
                 shuffle=False,
-                num_workers=self.training_config.num_workers # number of dataset workers
+                num_workers=self.training_config.num_workers  # number of dataset workers
             )
 
             # Initialize metrics
@@ -198,8 +204,11 @@ def main():
     # load config
     data_config, model_config, training_config = AutoConfig.from_config(config=config, rank=-1, world_size=-1,
                                                                         local_rank=-1)
-    # initialize ray cluster for distributed training
-    ray.init(num_gpus=args.num_gpus)
+    if args.use_gpu:
+        # initialize ray cluster for distributed training
+        ray.init(num_gpus=args.num_processes)
+    else:
+        ray.init(num_cpus=args.num_processes)
 
     try:
         datasets = load_datasets(
@@ -210,12 +219,13 @@ def main():
             concat=False,
         )
         dataset_refs = [ray.put(ds) for ds in datasets]
-        if args.num_gpus > 0:
+        if args.use_gpu:
             evaluator_cls = ModelEvaluator.options(num_gpus=1)
         else:
-            evaluator_cls = ModelEvaluator
+            evaluator_cls = ModelEvaluator.options(num_cpus=1)
+
         # Create evaluator actors (one per GPU)
-        num_workers = max(1, args.num_gpus)
+        num_workers = max(1, args.num_processes)
         logging.info(f"Creating {num_workers} evaluator actors")
         evaluators = [
             evaluator_cls.remote(model_config, training_config)
