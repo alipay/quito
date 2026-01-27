@@ -38,6 +38,7 @@ class ChronosV2(TimeSeriesModel):
         ...     forecast_horizon=96
         ... )
         >>> model = ChronosV2(config, local_rank=0)
+        >>> model.load("./models/chronos")
         >>> predictions = model.predict(input_tensor)
     """
     
@@ -65,31 +66,8 @@ class ChronosV2(TimeSeriesModel):
             optimal performance and memory usage.
         """
         super().__init__(config, local_rank)
-        
-        # Try to load Chronos pipeline
-        try:
-            from chronos import Chronos2Pipeline
-            self.pipeline = Chronos2Pipeline.from_pretrained(
-                config.name_or_path,
-                device_map=self.device,
-                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-            )
-            self.model = self.pipeline.model
-        
-        except ImportError as e:
-            raise ImportError(
-                "\n" + "="*80 + "\n"
-                "Amazon Chronos library not found!\n"
-                "\n"
-                "To use the Chronos model, install it with:\n"
-                "  pip install git+https://github.com/amazon-science/chronos-forecasting.git\n"
-                "\n"
-                "Or install all optional model dependencies:\n"
-                "  pip install -r requirements-optional.txt\n"
-                "\n"
-                "See requirements-optional.txt for more details on model-specific dependencies.\n"
-                + "="*80
-            ) from e
+        self.model = None
+        self.pipeline = None
 
     def forward(self, x: torch.Tensor, y: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
@@ -193,4 +171,28 @@ class ChronosV2(TimeSeriesModel):
         #         pred = torch.tensor(forecast).median(dim=1).values
         # return pred.unsqueeze(-1)
         return forecast.permute(0, 2, 1)
-    
+
+    def _load(self, checkpoint_or_path: str):
+        try:
+            from chronos import Chronos2Pipeline
+            self.pipeline = Chronos2Pipeline.from_pretrained(
+                checkpoint_or_path,
+                device_map='cpu',
+                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            )
+            self.model = self.pipeline.model
+
+        except ImportError as e:
+            raise ImportError(
+                "\n" + "="*80 + "\n"
+                "Amazon Chronos library not found!\n"
+                "\n"
+                "To use the Chronos model, install it with:\n"
+                "  pip install git+https://github.com/amazon-science/chronos-forecasting.git\n"
+                "\n"
+                "Or install all optional model dependencies:\n"
+                "  pip install -r requirements-optional.txt\n"
+                "\n"
+                "See requirements-optional.txt for more details on model-specific dependencies.\n"
+                + "="*80
+            ) from e

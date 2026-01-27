@@ -44,12 +44,9 @@ class Features(Enum):
     Defines how features are handled in the model:
     - M: Multivariate input -> Multivariate output
     - S: Univariate input -> Univariate output  
-    - MS: Multivariate input -> Univariate output (selective forecasting)
     """
     M = "M"
     S = "S"
-    MS = "MS"
-    
 
 @dataclass
 class DatasetConfig(BaseConfig):

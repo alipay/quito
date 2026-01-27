@@ -47,27 +47,7 @@ class TiRex(TimeSeriesModel):
             ImportError: If tirex library is not installed.
         """
         super().__init__(config, local_rank)
-        
-        # Try to load Chronos pipeline
-        try:
-            from tirex import TiRexZero
-            model_path = config.pretrained_model_name_or_path
-            # tirex expects a path directly to the model.ckpt if use locally.
-            if os.path.exists(model_path):
-                if not model_path.endswith('model.ckpt'):
-                    model_path = os.path.join(model_path, 'model.ckpt')
-
-            self.model = TiRexZero.from_pretrained(
-                model_path,
-                backend='torch'
-            )
-        
-        except ImportError as e:
-            raise ImportError(
-                "\n" + "="*80 + "\n"
-                "Tirex library not found!\n"
-                + "="*80
-            )
+        self.model = None
 
     def forward(self, x: torch.Tensor, y: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
@@ -125,3 +105,25 @@ class TiRex(TimeSeriesModel):
             
         # return pred.unsqueeze(-1)
         return forecast
+
+    def _load(self, checkpoint_or_path):
+        # Try to load Chronos pipeline
+        try:
+            from tirex import TiRexZero
+            model_path = checkpoint_or_path
+            # tirex expects a path directly to the model.ckpt if use locally.
+            if os.path.exists(model_path):
+                if not model_path.endswith('model.ckpt'):
+                    model_path = os.path.join(model_path, 'model.ckpt')
+
+            self.model = TiRexZero.from_pretrained(
+                model_path,
+                backend='torch'
+            )
+
+        except ImportError as e:
+            raise ImportError(
+                "\n" + "=" * 80 + "\n"
+                                  "Tirex library not found!\n"
+                + "=" * 80
+            )

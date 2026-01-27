@@ -47,32 +47,9 @@ class TimesFMV2p5(TimeSeriesModel):
             ImportError: If timesfm library is not installed.
         """
         super().__init__(config, local_rank)
-        
-        # Try to load Chronos pipeline
-        try:
-            import timesfm
-            model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(config.name_or_path)
-            self.model = model
-            self.model.compile(
-                timesfm.ForecastConfig(
-                    max_context=config.seq_len,
-                    max_horizon=config.forecast_horizon,
-                    normalize_inputs=True,
-                    use_continuous_quantile_head=True,
-                    force_flip_invariance=True,
-                    infer_is_positive=True,
-                    fix_quantile_crossing=True,
-                    per_core_batch_size=1024,
-            )
-            )
-        
-        except ImportError as e:
-            raise ImportError(
-                "\n" + "="*80 + "\n"
-                "TimesFM library not found!\n"
-                + "="*80
-            )
-    
+        self.config = config
+        self.model = None
+
     def eval_step(self, batch: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
         """
         Perform a single evaluation step.
@@ -145,3 +122,28 @@ class TimesFMV2p5(TimeSeriesModel):
             
         # return pred.unsqueeze(-1)
         return forecast
+
+    def _load(self, checkpoint_or_path):
+        try:
+            import timesfm
+            model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(checkpoint_or_path)
+            self.model = model
+            self.model.compile(
+                timesfm.ForecastConfig(
+                    max_context=self.config.seq_len,
+                    max_horizon=self.config.forecast_horizon,
+                    normalize_inputs=True,
+                    use_continuous_quantile_head=True,
+                    force_flip_invariance=True,
+                    infer_is_positive=True,
+                    fix_quantile_crossing=True,
+                    per_core_batch_size=1024,
+                )
+            )
+
+        except ImportError as e:
+            raise ImportError(
+                "\n" + "=" * 80 + "\n"
+                                  "TimesFM library not found!\n"
+                + "=" * 80
+            )

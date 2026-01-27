@@ -64,3 +64,6 @@ class ES(StatisticalModel):
         forecasts = rearrange(preds, 'N C L -> N L C', N=N, L=self.forecast_horizon, C=C)
 
         return forecasts
+
+    def _load(self, checkpoint_or_path: str):
+        pass

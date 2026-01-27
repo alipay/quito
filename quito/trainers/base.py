@@ -384,7 +384,10 @@ class BaseTrainer(ABC):
                 - epoch: Last completed epoch
                 - global_step: Last completed global step
         """
-        self.actual_model.load(checkpoint)
+        if not self.actual_model.loaded:
+            # only load when it is not loaded
+            self.actual_model.load(checkpoint)
+
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if self.scheduler:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])

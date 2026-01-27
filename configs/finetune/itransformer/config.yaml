@@ -5,12 +5,12 @@
 data:
   common:
     data_dir: "examples/datasets/cluster_data"
-    seq_len: 512  # Input sequence length
+    seq_len: 576  # Input sequence length
     decoder_label_len: 48  # Label length for decoder start
-    forecast_horizon: 96  # Prediction length
+    forecast_horizon: 288  # Prediction length
     features: "M"  # M: multivariate->multivariate, S: univariate->univariate
     normalize: True
-    global_test_point: '2023-09-01 00:00:00'
+    global_test_point: '2023-07-28 00:00:00'
   datasets:
     TEST_DATA_MIN: 
       file_name: "open_min_data.parquet"
@@ -34,43 +34,17 @@ data:
       ds_kwargs: {}
       target: 'ind_1'
     
-    # TEST_DATA_PRETRAIN: 
-    #   file_name: "/ossfs/workspace/ts_data_parquet/test_data.parquet"
-    #   train_ratio: 0.5
-    #   valid_ratio: 0.4
-    #   test_ratio: 0.1
-    #   is_pretrain: False
-    #   freq: 'M'
-    #   ds_cls: 'TimeSeriesDataset'
-    #   ds_kwargs: {}
-    #   target: 'ind_1'
-      
-    
 # Model Configuration
 model:
   model_name: 'ITransformer' # the name of the model class
-  # pretrained_model_name_or_path: '/ossfs/workspace/chronos'
-  # model_name: "tstransformer"  # tbe 
-  # time_pe_type: null
-  # feature_pe_type: null
-  # d_model: 512
-  # layers: ['feature_full', 'time_full', 'feature_full', 'time_full']
-  # d_model: 16  # Model dimension
-  # n_heads: 8  # Number of attention heads
-  # d_ff: 128  # Dimension of feedforward network
-  # dropout: 0.3  # Dropout rate
-  # activation: "gelu"  # Activation function
-  # norm: 'layer'
-  # patch_len: 16
-  # stride: 8
 
 # Training Configuration
 training:
   trainer_name: 'NaiveTrainer' # which trainer class to use ? the name of the trainer class
-  num_epochs: 20  # Number of training epochs
+  num_epochs: 5  # Number of training epochs
   batch_size: 128  # Training batch size per device
   eval_batch_size: 128  # Evaluation batch size (if null, uses batch_size)
-  learning_rate: 0.0001  # Learning rate
+  learning_rate: 0.001  # Learning rate
   weight_decay: 0.0  # Weight decay for regularization
   warmup_ratio: 0.0  # Warmup ratio (0.0 to 1.0)
   gradient_accumulation_steps: 1  # Number of gradient accumulation steps should >= 1
@@ -87,11 +61,11 @@ training:
 # Optimization Configuration
 optimization:
   fp16: False  # Use mixed precision training (FP16)
-  num_workers: 4  # Number of data loading workers
+  num_workers: 6  # Number of data loading workers
   scheduler: "cosine"  # Learning rate scheduler
   scheduler_kwargs: {
-    T_max: 50,
-    eta_min: 0.00001
+    T_max: 5,
+    eta_min: 0.0001
   }
   optimizer: "adam"  # Optimizer
   optimizer_kwargs: {}
@@ -105,9 +79,9 @@ checkpointing:
   
 # Logging Configuration
 logging:
-  output_dir: "outputs"  # Output directory for all outputs, e.g., checkpoints and logs
-  logging_steps: 100  # Log every N steps, None if dont want to log training measures at steps
-  logging_epochs: 1 # log every N epochs, None if dont want to log training measures at epoch
+  output_dir: "outputs/itransformer/"  # Output directory for all outputs, e.g., checkpoints and logs
+  logging_steps: 0  # Log every N steps, None if dont want to log training measures at steps
+  logging_epochs: 0 # log every N epochs, None if dont want to log training measures at epoch
   sync_loss: False # If true, training loss will be synced across devices
   sync_score: True # If true, validation score will be synced across devices
 
@@ -115,13 +89,13 @@ logging:
 early_stopping:
   enable_early_stopping: False  # Enable early stopping
   early_stopping_patience: 5  # Number of evaluations with no improvement before stopping
-  es_metric: "mase"  # Metric to monitor for early stopping
+  es_metric: "mae"  # Metric to monitor for early stopping
   greater_is_better: False  # is_greater_better for the metric
 
 evaluation:
-  eval_metrics: ['mse', 'mae', 'mase']
+  eval_metrics: ['mse', 'mae']
   eval_steps: null  # Evaluate every N steps,  None if dont want to eval at steps
-  eval_epochs: 10 # Evaluate every N epochs, None if dont want to eval at epoch
+  eval_epochs: 1 # Evaluate every N epochs, None if dont want to eval at epoch
   save_eval_results_top_k: 0 # wheather to save the last k eval step results, the inputs, predictions and labels during evaluation
 # Resume Training
 resume:
@@ -130,4 +104,3 @@ resume:
 distributed:
   ddp_find_unused_parameters: True
   ddp_backend: "nccl"
-

@@ -72,6 +72,8 @@ class ModelConfig(BaseConfig):
     dec_in: int = 1  # Decoder input size
     c_out: int = 5 # Output size
 
+    checkpoint_path: str = None
+
     def validate(self):
         """
         Validate model configuration parameters.

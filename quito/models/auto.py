@@ -59,7 +59,10 @@ class AutoModel:
         if model_class is None:
             raise ValueError(f"Unknown model type: {config.model_name}")
         
-        return model_class(config, local_rank, **kwargs)
+        model = model_class(config, local_rank, **kwargs)
+        model.load(config.checkpoint_path)
+
+        return model
 
     @classmethod 
     def register(cls, model_type: str, model_class: Type[BaseModel]):
@@ -81,4 +84,3 @@ class AutoModel:
             List of model type names
         """
         return [model_type.value for model_type in MODEL_MAPPING]
-

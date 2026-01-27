@@ -1,0 +1,90 @@
+data:
+  common:
+    data_dir: examples/datasets/cluster_data
+    seq_len: 1024
+    decoder_label_len: 48
+    forecast_horizon: 512
+    features: M
+    normalize: true
+    global_test_point: '2023-07-28 00:00:00'
+  datasets:
+    TEST_DATA_MIN:
+      file_name: open_min_data.parquet
+      train_ratio: 0.7
+      valid_ratio: 0.2
+      test_ratio: 0.1
+      is_pretrain: false
+      freq: M
+      ds_cls: TimeSeriesDataset
+      ds_kwargs: {}
+      target: ind_1
+    TEST_DATA_HOUR:
+      file_name: open_hour_data.parquet
+      train_ratio: 0.7
+      valid_ratio: 0.2
+      test_ratio: 0.1
+      is_pretrain: false
+      freq: H
+      ds_cls: TimeSeriesDataset
+      ds_kwargs: {}
+      target: ind_1
+model:
+  model_name: PatchTST
+  patch_len: 8
+  d_model: 64
+  e_layers: 4
+training:
+  trainer_name: NaiveTrainer
+  num_epochs: 5
+  batch_size: 128
+  eval_batch_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.0
+  warmup_ratio: 0.0
+  gradient_accumulation_steps: 1
+  max_grad_norm: 0.0
+  seed: 16
+  num_workers: 6
+  pin_memory: true
+  shuffle: true
+  save_last_k: 10
+  loss: mse
+  loss_kwargs: {}
+  drop_last: true
+optimization:
+  fp16: false
+  num_workers: 6
+  scheduler: cosine
+  scheduler_kwargs:
+    T_max: 5
+    eta_min: 0.0001
+  optimizer: adam
+  optimizer_kwargs: {}
+checkpointing:
+  enable_checkpoints: true
+  save_last_k: 10
+  save_steps: null
+  save_epochs: 1
+logging:
+  output_dir: outputs/patchtst/1024_512_M
+  logging_steps: 0
+  logging_epochs: 0
+  sync_loss: false
+  sync_score: true
+early_stopping:
+  enable_early_stopping: false
+  early_stopping_patience: 5
+  es_metric: mae
+  greater_is_better: false
+evaluation:
+  eval_metrics:
+  - mse
+  - mae
+  eval_steps: null
+  eval_epochs: 1
+  save_eval_results_top_k: 0
+resume:
+  checkpoint_path: null
+distributed:
+  ddp_find_unused_parameters: true
+  ddp_backend: nccl

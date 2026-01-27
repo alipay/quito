@@ -69,3 +69,6 @@ class NaiveForecaster(StatisticalModel):
             raise ValueError(f"Unknown naive method: {self.method}")
 
         return forecast
+
+    def _load(self, checkpoint_or_path: str):
+        pass

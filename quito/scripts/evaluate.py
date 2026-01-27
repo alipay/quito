@@ -25,6 +25,7 @@ import traceback
 from copy import deepcopy
 import time
 import json
+from statistics import mean
 
 from quito.config import AutoConfig
 from quito.config.training import TaskType, ModeType
@@ -93,10 +94,6 @@ class ModelEvaluator:
 
         self.model.device = self.device
         self.model = self.model.to(self.device)
-        if training_config.checkpoint_path:
-            self.model.load(training_config.checkpoint_path)
-            print(f'Model loaded from checkpoint {training_config.checkpoint_path}')
-
         self.model.metrics = training_config.eval_metrics
 
         # Store config
@@ -182,9 +179,9 @@ class ModelEvaluator:
 
             return {
                 "user_id": user_id,
-                "error": str(e),
                 "metrics": {},
-                "n_samples": 0
+                "n_samples": 0,
+                "eval_time": 0
             }
 
     def get_stats(self) -> Dict[str, Any]:
@@ -204,6 +201,7 @@ def main():
     # load config
     data_config, model_config, training_config = AutoConfig.from_config(config=config, rank=-1, world_size=-1,
                                                                         local_rank=-1)
+    num_workers = max(1, args.num_processes)
     if args.use_gpu:
         # initialize ray cluster for distributed training
         ray.init(num_gpus=args.num_processes)
@@ -224,52 +222,75 @@ def main():
         else:
             evaluator_cls = ModelEvaluator.options(num_cpus=1)
 
-        # Create evaluator actors (one per GPU)
-        num_workers = max(1, args.num_processes)
-        logging.info(f"Creating {num_workers} evaluator actors")
-        evaluators = [
-            evaluator_cls.remote(model_config, training_config)
-            for _ in range(num_workers)
-        ]
+        ckpts = model_config.checkpoint_path
+        assert ckpts, 'One of checkpoint_path or pretrained_model_name_or_path must be provided'
+        if isinstance(ckpts, str):
+            ckpts = [ckpts]
 
-        # Prepare evaluation tasks
-        tasks = []
-        for dataset_idx, dataset in enumerate(datasets):
-            user_ids = sorted(dataset.get_all_ids())
-            for user_id in user_ids:
-                tasks.append((dataset_idx, int(user_id)))
+        # support multiple checkpoints
+        results_dict = {}
+        for i, ckpt in enumerate(ckpts):
+            # Create evaluator actors (one per GPU) from scratch for each ckpt
+            logging.info(f"Creating {num_workers} evaluator actors for checkpoint {ckpt}")
+            model_config.checkpoint_path = ckpt
+            evaluators = [
+                evaluator_cls.remote(model_config, training_config)
+                for _ in range(num_workers)
+            ]
 
-        logging.info(f"Total tasks to evaluate: {len(tasks)}")
+            # Prepare evaluation tasks
+            tasks = []
+            for dataset_idx, dataset in enumerate(datasets):
+                user_ids = sorted(dataset.get_all_ids())
+                for user_id in user_ids:
+                    tasks.append((dataset_idx, int(user_id)))
 
-        # Distribute tasks round-robin across evaluators
-        futures = []
-        results_metadata = {}
+            logging.info(f"Total tasks to evaluate: {len(tasks)}")
 
-        for task_idx, (dataset_idx, user_id) in enumerate(tasks):
-            evaluator_id = task_idx % num_workers
-            evaluator = evaluators[evaluator_id]
-            future = evaluator.evaluate_user.remote(user_id, dataset_refs[dataset_idx])
-            futures.append(future)
-            results_metadata[len(futures) - 1] = {
-                "dataset_idx": dataset_idx,
-                "user_id": user_id,
-                "evaluator_id": evaluator_id
-            }
+            # Distribute tasks round-robin across evaluators
+            futures = []
+            results_metadata = {}
+            for task_idx, (dataset_idx, user_id) in enumerate(tasks):
+                evaluator_id = task_idx % num_workers
+                evaluator = evaluators[evaluator_id]
+                future = evaluator.evaluate_user.remote(user_id, dataset_refs[dataset_idx])
+                futures.append(future)
+                results_metadata[len(futures) - 1] = {
+                    "dataset_idx": dataset_idx,
+                    "user_id": user_id,
+                    "evaluator_id": evaluator_id
+                }
 
-        # Collect results with progress tracking
-        logging.info("Starting evaluation")
-        results = []
+            # Collect results with progress tracking
+            logging.info("Starting evaluation")
+            for future_idx, future in enumerate(futures):
+                result = ray.get(future)  # 5 min timeout per task
+                if result['user_id'] in results_dict:
+                    results_dict[result['user_id']].append(result)
+                else:
+                    results_dict[result['user_id']] = [result]
 
-        for future_idx, future in enumerate(futures):
-            result = ray.get(future)  # 5 min timeout per task
-            results.append(result)
+                if (future_idx + 1) % max(1, len(futures) // 10) == 0:
+                    logging.info(f"Progress: {future_idx + 1}/{len(futures)} evaluations complete")
 
-            if (future_idx + 1) % max(1, len(futures) // 10) == 0:
-                logging.info(f"Progress: {future_idx + 1}/{len(futures)} evaluations complete")
+        results_lst = []
+        for _, results in results_dict.items():
+            agg_dict = {}
+            for k in results[0]:
+                if k == 'metrics':
+                    metric_dict = {}
+                    for metric in results[0]['metrics']:
+                        metric_dict[metric] = mean([r['metrics'][metric] for r in results])
+
+                    agg_dict[k] = metric_dict
+                else:
+                    agg_dict[k] = mean([r[k] for r in results])
+
+            results_lst.append(agg_dict)
 
         model_name = model_config.model_name
         with open(os.path.join(output_dir, f'eval_results_{model_name}.json'), 'w') as f:
-            final_results = {'final_results': results, 'model_name': model_name}
+            final_results = {'final_results': results_lst, 'model_name': model_name}
             json.dump(final_results, f)
 
     finally:

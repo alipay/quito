@@ -79,6 +79,8 @@ class AutoConfig:
         model_config = cls._get_model_config(config)
         training_config = cls._get_training_config(config=config, rank=rank, local_rank=local_rank,
                                                    world_size=world_size)
+        # set checkpoint path to model's actual checkpoint path
+        training_config.checkpoint_path = model_config.checkpoint_path
 
         return data_config, model_config, training_config
 
@@ -107,8 +109,12 @@ class AutoConfig:
         # get model config
         model_config = config.model
         data_config = config.data.common
+        checkpoint_config = config.resume
         # check for pretrained config (huggingface PretrainConfig) or local config (ModelConfig)
         if 'pretrained_model_name_or_path' in model_config and model_config.pretrained_model_name_or_path:
+            if isinstance(model_config.pretrained_model_name_or_path, list):
+                raise ValueError('pretrained_model_name_or_path should be a string, not a list, '
+                                 'multiple checkpoints are only supported using quito checkpoints')
             # this will load pretrained model config.json from huggingface or local path
             if model_config.model_name == 'TiRex':
                 # for tirex, only checkpoint path is provided, the config is inside the construct a empty config file
@@ -120,12 +126,17 @@ class AutoConfig:
                 curr_model_config = HFAutoConfig.from_pretrained(model_config.pretrained_model_name_or_path)
                 logging.info(f'creating model config from huggingface using {curr_model_config.__class__.__name__}')
 
+            curr_model_config.checkpoint_path = model_config.pretrained_model_name_or_path
         else:
             model_name = model_config.model_name
             model_config_name = f'{model_name}ModelConfig'
             model_config_cls = MODEL_CONFIG_MAPPING[model_config_name]
             logging.info(f'creating model config from local using {model_config_name}')
             curr_model_config = model_config_cls(**model_config)
+            # support definition of checkpoint path in model config
+            if not curr_model_config.checkpoint_path:
+                # if model_config.checkpoint_path is not provided, use checkpoint_path defined in resume
+                curr_model_config.checkpoint_path = checkpoint_config.checkpoint_path
 
         # get common data config
         seq_len = data_config.seq_len
@@ -142,6 +153,8 @@ class AutoConfig:
             output_dim = 1
             enc_in = 1
             c_out = 1
+        else:
+            raise ValueError(f'features {features} not recognized, only M, S supported')
 
         # set data config and fetch corresponding model config class
         curr_model_config.seq_len = seq_len

@@ -78,6 +78,7 @@ class BaseModel(nn.Module, ABC):
 
         # Device management: handle CPU (-1) and GPU (>=0) cases
         self.device = f'cuda:{local_rank}' if local_rank >= 0 else 'cpu'
+        self.loaded = False
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -144,87 +145,6 @@ class BaseModel(nn.Module, ABC):
         training loss between model predictions and ground truth targets.
         """
         pass
-
-    def save_pretrained(self, save_directory: Union[str, Path], **kwargs):
-        """
-        Save the model to a directory in a format compatible with HuggingFace-style loading.
-
-        Saves the model state dict, configuration, and metadata to enable easy
-        loading later. Creates the directory if it doesn't exist.
-
-        Args:
-            save_directory (Union[str, Path]): Directory path where the model
-                will be saved. Will be created if it doesn't exist.
-            **kwargs: Additional arguments (currently unused, for future extensions).
-
-        Files created:
-            - pytorch_model.bin: Model state dictionary
-            - config.json: Model configuration
-            - model_info.json: Model metadata (type, version, framework)
-
-        Example:
-            >>> model.save_pretrained("./saved_models/my_model")
-            >>> # Creates: ./saved_models/my_model/pytorch_model.bin, config.json, etc.
-        """
-        save_directory = Path(save_directory)
-        save_directory.mkdir(parents=True, exist_ok=True)
-
-        # Save model state dict
-        torch.save(self.state_dict(), save_directory / "pytorch_model.bin")
-
-        # Save configuration
-        self.config.save(save_directory / "config.json")
-
-        # Save model info
-        model_info = {
-            "model_type": self.__class__.__name__,
-            "version": "0.1.0",
-            "framework": "pytorch",
-        }
-
-        with open(save_directory / "model_info.json", "w") as f:
-            json.dump(model_info, f, indent=2)
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: Union[str, Path], **kwargs):
-        """
-        Load a pretrained model from a saved directory.
-
-        Loads a model that was previously saved using save_pretrained(). The
-        method loads the configuration, creates a model instance, and loads
-        the trained weights.
-
-        Args:
-            pretrained_model_name_or_path (Union[str, Path]): Path to the directory
-                containing the saved model files (pytorch_model.bin, config.json).
-            **kwargs: Additional arguments passed to model initialization.
-
-        Returns:
-            BaseModel: Loaded model instance with pretrained weights.
-
-        Raises:
-            FileNotFoundError: If the model directory or required files don't exist.
-
-        Example:
-            >>> model = MyModel.from_pretrained("./saved_models/my_model")
-            >>> # Loads model with pretrained weights
-        """
-        model_path = Path(pretrained_model_name_or_path)
-
-        # Load configuration
-        config = ModelConfig.from_file(model_path / "config.json")
-
-        # Create model instance
-        model = cls(config, **kwargs)
-
-        # Load state dict with proper device handling
-        state_dict = torch.load(
-            model_path / "pytorch_model.bin",
-            map_location=torch.device(model.device)
-        )
-        model.load_state_dict(state_dict)
-
-        return model
 
     def train_step(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
@@ -336,12 +256,18 @@ class BaseModel(nn.Module, ABC):
         Raises:
             ValueError: If no valid state dictionary is found in the checkpoint.
             FileNotFoundError: If checkpoint file path doesn't exist.
+        """
+        if checkpoint_or_path:
+            self._load(checkpoint_or_path)
+            self.loaded = True
+            logging.info('Load model from checkpoint successfully')
+        else:
+            self.loaded = False
+            logging.info('Checkpoint path not provided, build model from scratch')
 
-        Example:
-            >>> model.load("checkpoints/epoch_10.pt")
-            >>> # Or from a dict:
-            >>> checkpoint = torch.load("checkpoint.pt")
-            >>> model.load(checkpoint)
+    def _load(self, checkpoint_or_path):
+        """
+        Implement the different checkpoint loading logic
         """
         if isinstance(checkpoint_or_path, str):
             ckpt = torch.load(checkpoint_or_path, map_location='cpu')
@@ -354,8 +280,6 @@ class BaseModel(nn.Module, ABC):
             self.load_state_dict(ckpt['state_dict'])
         else:
             raise ValueError(f'No model state dict found in checkpoint {ckpt} !!')
-
-        logging.info(f'Load model from checkpoint successfully')
 
     def predict_prob(self, x: torch.Tensor, quantiles: List[float] = [0.1, 0.5, 0.9], **kwargs) -> Dict[str, torch.Tensor]:
         """
