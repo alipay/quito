@@ -54,10 +54,10 @@ class ES(StatisticalModel):
         train_data = rearrange(x, 'N L C -> N C L', N=N, L=L, C=C)
         # Create ETS model
         model = ExponentialSmoothing(
-            # trend=self.trend,
-            # seasonal=self.seasonal,
-            # sp=self.seasonal_periods,
-            # damped_trend=self.damped_trend
+            trend=self.trend,
+            seasonal=self.seasonal,
+            sp=self.seasonal_periods,
+            damped_trend=self.damped_trend
         )
         #
         preds = model.fit_predict(train_data, fh=list(np.arange(1, self.forecast_horizon + 1)))

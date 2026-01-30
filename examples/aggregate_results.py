@@ -59,7 +59,7 @@ def main():
         nargs='+',
         type=str,
         default=['chronos', 'tirex', 'timesfm', 'patchtst', 'dlinear', 'crossformer', 'pyraformer', 'tsmixer',
-                 'itransformer']
+                 'itransformer', 'snaive', 'es']
     )
     parser.add_argument(
         "--fh",
@@ -146,7 +146,7 @@ def main():
         result_median_df[f'{metric}_rank'] = result_median_df.groupby(['group_name'])[metric].rank(ascending=True)
 
     if not os.path.exists(args.output_dir):
-        os.makedirs(args.outputs_dir)
+        os.makedirs(args.output_dir)
 
     result_std_df.to_csv(os.path.join(args.output_dir, f'results_std_df_{args.lw}_{args.fh}_{args.features}.csv'),
                          index=False)

@@ -434,9 +434,8 @@ class ESModelConfig(ModelConfig):
     """
     Configuration for ETS model.
     """
-    error: str = 'add'
-    trend: str = 'add'
-    seasonal: str = 'add'
+    trend: Optional[str] = None
+    seasonal: Optional[str] = None
     seasonal_periods: Optional[int] = None
     damped_trend: bool = False
 
