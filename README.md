@@ -119,26 +119,11 @@ See [docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md) for detailed information.
 ## Quick Start
 
 ### Using CLI
-
-**Important**: The CLI commands should be run from the `scripts/` directory:
+```bash
+# Example: Evaluate Chronos on QuitoBench test data:
 
 ```bash
-# Navigate to scripts directory
-cd scripts
-
-# Pre-training
-quito-cli pretrain --config_path ../configs/pretrain/{model}/config.yaml
-
-# Fine-tuning
-quito-cli finetune --config_path ../configs/finetune/{model}/config.yaml
-
-# Evaluation
-quito-cli evaluate --config_path ../configs/evaluate/{model}/config.yaml --num_gpus 2
-
-# Hyperparameter tuning
-quito-cli tune --config_path ../configs/tune/{model}/config.yaml \
-              --tuning_config_path ../configs/tune/{model}/tune_config.yaml \
-              --num_workers 4 --num_samples 100
+quito-cli evaluate --config_path configs/evaluate/chronos/config.yaml
 ```
 
 **Example**: Evaluate Chronos on QuitoBench test data:
@@ -154,23 +139,23 @@ Alternatively, you can run the scripts directly from the repository root:
 
 ```bash
 # Pre-training with distributed training
-torchrun --nproc_per_node 4 scripts/pretrain.py \
-    --config_path configs/pretrain/patchtst/config.yaml
+torchrun --nproc_per_node 4 quito/scripts/pretrain.py \
+    --config_path configs/pretrain/patchtst/config.yaml --use_gpu 1
 
 # Fine-tuning
-torchrun --nproc_per_node 4 scripts/finetune.py \
-    --config_path configs/finetune/patchtst/config.yaml
+torchrun --nproc_per_node 4 quito/scripts/finetune.py \
+    --config_path configs/finetune/patchtst/config.yaml --use_gpu 1
 
 # Evaluation
-python scripts/evaluate.py \
+python quito/scripts/evaluate.py \
     --config_path configs/evaluate/patchtst/config.yaml \
-    --num_gpus 2
+    --num_processes 2 --use_gpu 1
 
 # Hyperparameter tuning
-python scripts/tune.py \
+python quito/scripts/tune.py \
     --config_path configs/tune/patchtst/config.yaml \
     --tuning_config_path configs/tune/patchtst/tune_config.yaml \
-    --num_workers 4 \
+    --num_processes 4 \
     --num_samples 100 \
     --use_gpu 1
 ```
@@ -359,12 +344,12 @@ python examples/create_data.py
 
 ```bash
 # Using torchrun (recommended)
-torchrun --nproc_per_node 4 scripts/pretrain.py \
-    --config_path configs/pretrain/patchtst/config.yaml
+torchrun --nproc_per_node 4 quito/scripts/pretrain.py \
+    --config_path configs/pretrain/patchtst/config.yaml --use_gpu 1
 
 # Or using quito-cli
 CUDA_VISIBLE_DEVICES=0,1,2,3 quito-cli pretrain \
-    --config_path configs/pretrain/patchtst/config.yaml
+    --config_path configs/pretrain/patchtst/config.yaml --num_processes 4
 ```
 
 ### Multi-Node Training
@@ -373,12 +358,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 quito-cli pretrain \
 # Node 0 (master)
 torchrun --nproc_per_node 4 --nnodes 2 --node_rank 0 \
     --master_addr master_ip --master_port 29500 \
-    scripts/pretrain.py --config_path configs/pretrain/patchtst/config.yaml
+    quito/scripts/pretrain.py --config_path configs/pretrain/patchtst/config.yaml --use_gpu 1
 
 # Node 1 (worker)
 torchrun --nproc_per_node 4 --nnodes 2 --node_rank 1 \
     --master_addr master_ip --master_port 29500 \
-    scripts/pretrain.py --config_path configs/pretrain/patchtst/config.yaml
+    quito/scripts/pretrain.py --config_path configs/pretrain/patchtst/config.yaml --use_gpu 1
 ```
 
 ## Examples
@@ -441,36 +426,32 @@ python examples/create_data.py
 # Analyze data quality (from repo root)
 python examples/analyze_dataset_quality.py
 
-# Pre-train model (from scripts directory)
-cd scripts
-quito-cli pretrain --config_path ../configs/pretrain/patchtst/config.yaml
+# Pre-train model
+quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml
 ```
 
 ### 2. Fine-tune a Pre-trained Model
 
 ```bash
-# Fine-tune on your specific task (from scripts directory)
-cd scripts
-quito-cli finetune --config_path ../configs/finetune/patchtst/config.yaml
+# Fine-tune on your specific task
+quito-cli finetune --config_path configs/finetune/patchtst/config.yaml
 ```
 
 ### 3. Hyperparameter Optimization
 
 ```bash
-# Tune hyperparameters (from scripts directory)
-cd scripts
-quito-cli tune --config_path ../configs/tune/patchtst/config.yaml \
-              --tuning_config_path ../configs/tune/patchtst/tune_config.yaml \
-              --num_workers 4 \
+# Tune hyperparameters
+quito-cli tune --config_path configs/tune/patchtst/config.yaml \
+              --tuning_config_path configs/tune/patchtst/tune_config.yaml \
+              --num_processes 4 \
               --num_samples 100
 ```
 
 ### 4. Zero-Shot Inference
 
 ```bash
-# Evaluate pre-trained foundation model (from scripts directory)
-cd scripts
-quito-cli evaluate --config_path ../configs/evaluate/chronos/config.yaml
+# Evaluate pre-trained foundation model
+quito-cli evaluate --config_path configs/evaluate/chronos/config.yaml
 ```
 
 ### 5. Batch Evaluation
@@ -478,7 +459,7 @@ quito-cli evaluate --config_path ../configs/evaluate/chronos/config.yaml
 ```bash
 # Evaluate multiple configs (from repo root using scripts directly)
 for config in configs/evaluate/*/config.yaml; do
-    python scripts/evaluate.py --config_path $config --num_gpus 2
+    python quito/scripts/evaluate.py --config_path $config --num_processes 2
 done
 ```
 

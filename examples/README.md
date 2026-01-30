@@ -8,82 +8,6 @@ All example scripts are **independent** and **self-contained** - no cross-depend
 
 ## 📂 Example Scripts
 
-### Training Examples (Trainable Models)
-
-#### `train_patchtst.py`
-Train the PatchTST model on your data.
-
-```bash
-python examples/train_patchtst.py
-```
-
-**Features**:
-- Patch-based transformer architecture
-- Works on CPU or GPU
-- No external model dependencies
-- Full training pipeline
-
-**Config**: `configs/patchtst.yaml`
-
----
-
-#### `train_huggingface.py`
-Train any Hugging Face time series model.
-
-```bash
-python examples/train_huggingface.py
-```
-
-**Features**:
-- Generic HuggingFace model wrapper
-- Flexible architecture support
-- GPU/CPU compatible
-- Requires `transformers` (already in requirements.txt)
-
-**Config**: `configs/huggingface.yaml`
-
----
-
-### Evaluation Examples (Zero-Shot Inference)
-
-#### `eval_chronos.py`
-Evaluate Amazon Chronos model (zero-shot inference only).
-
-```bash
-python examples/eval_chronos.py
-```
-
-**Features**:
-- Pre-trained foundation model
-- Zero-shot forecasting
-- No training required
-- Requires: `pip install git+https://github.com/amazon-science/chronos-forecasting.git`
-
-**Config**: `configs/chronos.yaml`
-
-⚠️ **Note**: Chronos is inference-only and cannot be fine-tuned.
-
----
-
-#### `eval_moriai.py`
-Evaluate Salesforce Moirai model (zero-shot inference only).
-
-```bash
-python examples/eval_moriai.py
-```
-
-**Features**:
-- Pre-trained foundation model
-- Zero-shot forecasting
-- No training required
-- Requires: `pip install uni2ts`
-
-**Config**: `configs/moriai.yaml`
-
-⚠️ **Note**: Moirai is inference-only and cannot be fine-tuned.
-
----
-
 ### Data Utilities
 
 #### `create_data.py`
@@ -197,16 +121,62 @@ pip install statsmodels arch  # For full features
 
 ---
 
+### Additional Utilities
+
+#### `aggregate_results.py`
+Aggregate and analyze results from multiple experiments.
+
+```bash
+python examples/aggregate_results.py
+```
+
+#### `cluster_items_by_quality.py`
+Cluster time series items by their quality metrics.
+
+```bash
+python examples/cluster_items_by_quality.py
+```
+
+#### `build_cluster_files.py`
+Build cluster-specific dataset files.
+
+```bash
+python examples/build_cluster_files.py
+```
+
+#### `merge_train_valid_test.py`
+Merge train, validation, and test datasets.
+
+```bash
+python examples/merge_train_valid_test.py
+```
+
+#### `run_quality_analysis.sh`
+Shell script to run quality analysis in batch mode.
+
+```bash
+bash examples/run_quality_analysis.sh
+```
+
+#### `run_quality_analysis_fast.sh`
+Shell script to run fast quality analysis.
+
+```bash
+bash examples/run_quality_analysis_fast.sh
+```
+
+---
+
 ## 📁 Configuration Files
 
 All model configurations are in `configs/`:
 
 ```
 configs/
-├── patchtst.yaml      # PatchTST configuration
-├── huggingface.yaml   # HuggingFace model config
-├── chronos.yaml       # Chronos model config
-└── moriai.yaml        # Moirai model config
+├── pretrain/          # Pre-training configurations
+├── finetune/          # Fine-tuning configurations  
+├── evaluate/          # Evaluation configurations
+└── tune/              # Hyperparameter tuning configurations
 ```
 
 ### Configuration Structure
@@ -219,14 +189,21 @@ data:
     features: "S"             # S: univariate, M: multivariate
     freq: "H"                 # H: hourly, D: daily, etc.
 
+datasets:
+  - dataset_name: "my_dataset"
+    file_name: "datasets/parquet_data/open_hour_train/data.parquet"
+
 model:
   model_name: "patchtst"
   # Model-specific parameters
 
 training:
+  task_type: "pretrain"       # pretrain, finetune, evaluate
   num_epochs: 10
   batch_size: 32
   learning_rate: 0.001
+  device: "cuda"
+  num_gpus: 1
 ```
 
 ## 🚀 Usage Patterns
@@ -239,26 +216,14 @@ python examples/create_data.py
 # 2. Analyze data quality
 python examples/analyze_dataset_quality.py
 
-# 3. Train a model
-python examples/train_patchtst.py
+# 3. Pre-train a model
+quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml
 
-# 4. Evaluate zero-shot model
-python examples/eval_chronos.py
-```
+# 4. Fine-tune a model
+quito-cli finetune --config_path configs/finetune/patchtst/config.yaml
 
-### GPU Training
-```bash
-# Single GPU
-CUDA_VISIBLE_DEVICES=0 python examples/train_patchtst.py
-
-# Multi-GPU (DDP)
-CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 examples/train_patchtst.py
-```
-
-### CPU Training
-All examples automatically fall back to CPU if no GPU is available:
-```bash
-python examples/train_patchtst.py  # Automatically uses CPU
+# 5. Evaluate a model
+quito-cli evaluate --config_path configs/evaluate/patchtst/config.yaml
 ```
 
 ## 📊 Dataset Structure
@@ -295,42 +260,16 @@ datasets:
     file_name: "datasets/parquet_data/my_data/my_file.parquet"
 ```
 
-### Add Custom Models
-See [docs/EXAMPLES.md](../docs/tune.md) for detailed instructions on adding custom models.
-
 ## 📚 Documentation
 
 For more detailed information:
-- **Training Guide**: [docs/TRAINING.md](../docs/pretrain.md)
-- **Evaluation Guide**: [docs/EVALUATION.md](../docs/evaluate.md)
+- **Pre-training Guide**: [docs/pretrain.md](../docs/pretrain.md)
+- **Fine-tuning Guide**: [docs/finetune.md](../docs/finetune.md)
+- **Evaluation Guide**: [docs/evaluate.md](../docs/evaluate.md)
+- **Hyperparameter Tuning Guide**: [docs/tune.md](../docs/tune.md)
 - **Dataset Quality Guide**: [docs/DATASET_QUALITY.md](../docs/DATASET_QUALITY.md)
-- **Examples Explained**: [docs/EXAMPLES.md](../docs/tune.md)
 
 ## 🐛 Troubleshooting
-
-### Common Issues
-
-**"ModuleNotFoundError: No module named 'chronos'"**
-```bash
-pip install git+https://github.com/amazon-science/chronos-forecasting.git
-```
-
-**"ModuleNotFoundError: No module named 'uni2ts'"**
-```bash
-pip install uni2ts
-```
-
-**"ValueError: 'H' is not a valid Freq"**
-- Make sure `freq: "H"` is uppercase in your config file
-
-**"FileNotFoundError: parquet file not found"**
-```bash
-python examples/create_data.py  # Generate sample data first
-```
-
-**"RuntimeError: element 0 of tensors does not require grad"**
-- Chronos and Moirai are inference-only models
-- Use `eval_chronos.py` or `eval_moriai.py` instead of training scripts
 
 ### Dataset Quality Analysis Issues
 
@@ -351,17 +290,11 @@ pip install matplotlib  # Required for visualization
 
 ## 💡 Best Practices
 
-1. **Start with data generation**: Run `create_data.py` first
-2. **Check data quality**: Use `analyze_dataset_quality.py` before training
-3. **Start small**: Use small configs for testing, then scale up
-4. **Monitor training**: Check logs for convergence
-5. **Compare models**: Evaluate multiple models on the same data
-
-## 🎓 Learning Path
-
-1. **Beginner**: Start with `create_data.py` → `train_patchtst.py`
-2. **Intermediate**: Try `analyze_dataset_quality.py` → customize configs
-3. **Advanced**: Multi-GPU training → zero-shot evaluation → model comparison
+ 1. **Start with data generation**: Run `create_data.py` first
+ 2. **Check data quality**: Use `analyze_dataset_quality.py` before training
+ 3. **Start small**: Use small configs for testing, then scale up
+ 4. **Monitor training**: Check logs for convergence
+ 5. **Compare models**: Evaluate multiple models on the same data
 
 ---
 
