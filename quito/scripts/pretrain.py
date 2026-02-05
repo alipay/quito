@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 def parse_args():
     """
     Parse command line arguments for pre-training.
-    
+
     Returns:
         argparse.Namespace: Parsed command line arguments.
     """
@@ -143,3 +143,6 @@ def main(config=None):
             logging.error(f"Training failed with error: {e}, peform cleaning ...")
             raise
 
+
+if __name__ == '__main__':
+    main()
