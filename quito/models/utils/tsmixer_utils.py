@@ -77,15 +77,15 @@ class FeatureMixing(nn.Module):
     """
 
     def __init__(
-        self,
-        sequence_length: int,
-        input_channels: int,
-        output_channels: int,
-        ff_dim: int,
-        activation_fn: Callable[[torch.Tensor], torch.Tensor] = F.relu,
-        dropout_rate: float = 0.1,
-        normalize_before: bool = True,
-        norm_type: type[nn.Module] = TimeBatchNorm2d,
+            self,
+            sequence_length: int,
+            input_channels: int,
+            output_channels: int,
+            ff_dim: int,
+            activation_fn: Callable[[torch.Tensor], torch.Tensor] = F.relu,
+            dropout_rate: float = 0.1,
+            normalize_before: bool = True,
+            norm_type: type[nn.Module] = TimeBatchNorm2d,
     ):
         """Initializes the FeatureMixing module with the provided parameters."""
         super().__init__()
@@ -153,16 +153,16 @@ class ConditionalFeatureMixing(nn.Module):
     """
 
     def __init__(
-        self,
-        sequence_length: int,
-        input_channels: int,
-        output_channels: int,
-        static_channels: int,
-        ff_dim: int,
-        activation_fn: Callable = F.relu,
-        dropout_rate: float = 0.1,
-        normalize_before: bool = False,
-        norm_type: type[nn.Module] = nn.LayerNorm,
+            self,
+            sequence_length: int,
+            input_channels: int,
+            output_channels: int,
+            static_channels: int,
+            ff_dim: int,
+            activation_fn: Callable = F.relu,
+            dropout_rate: float = 0.1,
+            normalize_before: bool = False,
+            norm_type: type[nn.Module] = nn.LayerNorm,
     ):
         super().__init__()
 
@@ -179,7 +179,7 @@ class ConditionalFeatureMixing(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, x_static: torch.Tensor
+            self, x: torch.Tensor, x_static: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Applies conditional feature mixing using both dynamic and static inputs.
 
@@ -222,12 +222,12 @@ class TimeMixing(nn.Module):
     """
 
     def __init__(
-        self,
-        sequence_length: int,
-        input_channels: int,
-        activation_fn: Callable = F.relu,
-        dropout_rate: float = 0.1,
-        norm_type: type[nn.Module] = TimeBatchNorm2d,
+            self,
+            sequence_length: int,
+            input_channels: int,
+            activation_fn: Callable = F.relu,
+            dropout_rate: float = 0.1,
+            norm_type: type[nn.Module] = TimeBatchNorm2d,
     ):
         """Initializes the TimeMixing module with the specified parameters."""
         super().__init__()
@@ -273,15 +273,15 @@ class MixerLayer(nn.Module):
     """
 
     def __init__(
-        self,
-        sequence_length: int,
-        input_channels: int,
-        output_channels: int,
-        ff_dim: int,
-        activation_fn: Callable = F.relu,
-        dropout_rate: float = 0.1,
-        normalize_before: bool = False,
-        norm_type: type[nn.Module] = nn.LayerNorm,
+            self,
+            sequence_length: int,
+            input_channels: int,
+            output_channels: int,
+            ff_dim: int,
+            activation_fn: Callable = F.relu,
+            dropout_rate: float = 0.1,
+            normalize_before: bool = False,
+            norm_type: type[nn.Module] = nn.LayerNorm,
     ):
         """Initializes the MixLayer with time and feature mixing modules."""
         super().__init__()
@@ -337,16 +337,16 @@ class ConditionalMixerLayer(nn.Module):
     """
 
     def __init__(
-        self,
-        sequence_length: int,
-        input_channels: int,
-        output_channels: int,
-        static_channels: int,
-        ff_dim: int,
-        activation_fn: Callable = F.relu,
-        dropout_rate: float = 0.1,
-        normalize_before: bool = False,
-        norm_type: type[nn.Module] = nn.LayerNorm,
+            self,
+            sequence_length: int,
+            input_channels: int,
+            output_channels: int,
+            static_channels: int,
+            ff_dim: int,
+            activation_fn: Callable = F.relu,
+            dropout_rate: float = 0.1,
+            normalize_before: bool = False,
+            norm_type: type[nn.Module] = nn.LayerNorm,
     ):
         super().__init__()
 
@@ -420,18 +420,18 @@ class TSMixer(nn.Module):
     """
 
     def __init__(
-        self,
-        sequence_length: int,
-        prediction_length: int,
-        input_channels: int,
-        output_channels: int = None,
-        activation_fn: str = "relu",
-        num_blocks: int = 2,
-        dropout_rate: float = 0.1,
-        ff_dim: int = 64,
-        normalize_before: bool = True,
-        norm_type: str = "batch",
-        revin: bool = True
+            self,
+            sequence_length: int,
+            prediction_length: int,
+            input_channels: int,
+            output_channels: int = None,
+            activation_fn: str = "relu",
+            num_blocks: int = 2,
+            dropout_rate: float = 0.1,
+            ff_dim: int = 64,
+            normalize_before: bool = True,
+            norm_type: str = "batch",
+            revin: bool = True
     ):
         super().__init__()
 
@@ -463,7 +463,7 @@ class TSMixer(nn.Module):
         self.revin = revin
 
     def _build_mixer(
-        self, num_blocks: int, input_channels: int, output_channels: int, **kwargs
+            self, num_blocks: int, input_channels: int, output_channels: int, **kwargs
     ):
         """Build the mixer blocks for the model.
 
@@ -495,21 +495,10 @@ class TSMixer(nn.Module):
         Returns:
             torch.Tensor: The output tensor after processing by the model.
         """
-        if self.revin:
-            # revin
-            means = x_hist.mean(1, keepdim=True).detach() # N, 1, C
-            x_hist = x_hist - means
-            stdev = torch.sqrt(torch.var(x_hist, dim=1, keepdim=True, unbiased=False) + 1e-5) # N, 1, C
-            x_hist /= stdev
-
         x = self.mixer_layers(x_hist)
 
         x_temp = feature_to_time(x)
         x_temp = self.temporal_projection(x_temp)
         x = time_to_feature(x_temp)
-
-        if self.revin:
-            # revin
-            x = x * stdev + means
 
         return x

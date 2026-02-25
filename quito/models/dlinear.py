@@ -18,6 +18,7 @@ class moving_avg(nn.Module):
         kernel_size (int): Size of the moving average window.
         stride (int): Stride for the average pooling operation.
     """
+
     def __init__(self, kernel_size, stride):
         super(moving_avg, self).__init__()
         self.kernel_size = kernel_size
@@ -106,7 +107,7 @@ class DLinear(TimeSeriesModel):
         super().__init__(config, local_rank)
         self.seq_len = config.seq_len
         self.pred_len = config.forecast_horizon
-        self.revin = config.revin
+        self.use_revin = config.revin
 
         # Decompsition Kernel Size
         kernel_size = config.kernel_size
@@ -152,13 +153,6 @@ class DLinear(TimeSeriesModel):
                 (batch_size, forecast_horizon, n_features).
         """
         # x: [Batch, Input length, Channel]
-        if self.revin:
-            # Normalization from Non-stationary Transformer
-            means = x.mean(1, keepdim=True).detach()
-            x = x - means
-            stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-            x /= stdev
-
         seasonal_init, trend_init = self.decompsition(x)
         seasonal_init, trend_init = seasonal_init.permute(0, 2, 1), trend_init.permute(0, 2, 1)
         if self.individual:
@@ -175,7 +169,5 @@ class DLinear(TimeSeriesModel):
 
         x = seasonal_output + trend_output
         x = x.permute(0, 2, 1)
-        if self.revin:
-            x = x * stdev + means
 
         return x  # to [Batch, Output length, Channel]

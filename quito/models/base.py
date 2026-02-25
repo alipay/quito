@@ -79,6 +79,7 @@ class BaseModel(nn.Module, ABC):
         # Device management: handle CPU (-1) and GPU (>=0) cases
         self.device = f'cuda:{local_rank}' if local_rank >= 0 else 'cpu'
         self.loaded = False
+        self.use_revin = False
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -432,6 +433,16 @@ class TimeSeriesModel(BaseModel):
         Returns:
             torch.Tensor: Scalar loss tensor.
         """
+        # norm
+        if self.use_revin:
+            means = x.mean(1, keepdim=True).detach() # N, 1, C
+            x = x - means
+            stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5) # N, 1, C
+            x /= stdev
+            # norm y
+            y = y - means
+            y /= stdev
+
         # construct decoder input for encoder-decoder framework
         x, y_in, x_mark, y_mark = self._construct_model_input(x, y, x_mark, y_mark)
         y_pred = self.forward(x=x, y=y_in, x_mark=x_mark, y_mark=y_mark, **kwargs)
@@ -465,8 +476,19 @@ class TimeSeriesModel(BaseModel):
         """
         self.eval()
         with torch.no_grad():
-            return self.forward(x=x, y=y, x_mark=x_mark, y_mark=y_mark, **kwargs)
+            # norm
+            if self.use_revin:
+                means = x.mean(1, keepdim=True).detach() # N, 1, C
+                x = x - means
+                stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5) # N, 1, C
+                x /= stdev
 
+            y_pred = self.forward(x=x, y=y, x_mark=x_mark, y_mark=y_mark, **kwargs)
+            # denorm
+            if self.use_revin:
+                 y_pred = y_pred * stdev + means
+
+            return y_pred
 
 class StatisticalModel(BaseModel):
     """

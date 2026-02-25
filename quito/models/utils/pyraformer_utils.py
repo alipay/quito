@@ -28,15 +28,15 @@ class PositionalEmbedding(nn.Module):
 class TokenEmbedding(nn.Module):
     def __init__(self, c_in, d_model):
         super(TokenEmbedding, self).__init__()
-        padding = 1 if torch.__version__>='1.5.0' else 2
-        self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model, 
-                                    kernel_size=3, padding=padding, padding_mode='circular')
+        padding = 1 if torch.__version__ >= '1.5.0' else 2
+        self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model,
+                                   kernel_size=3, padding=padding, padding_mode='circular')
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight,mode='fan_in',nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
 
     def forward(self, x):
-        x = self.tokenConv(x.permute(0, 2, 1)).transpose(1,2)
+        x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
         return x
 
 
@@ -65,12 +65,14 @@ class TimeFeatureEmbedding(nn.Module):
 
         d_inp = 4
         self.embed = nn.Linear(d_inp, d_model)
-    
+
     def forward(self, x):
         return self.embed(x)
 
 
 """Embedding modules. The DataEmbedding is used by the ETT dataset for long range forecasting."""
+
+
 class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, dropout=0.1):
         super(DataEmbedding, self).__init__()
@@ -86,7 +88,10 @@ class DataEmbedding(nn.Module):
 
         return self.dropout(x)
 
+
 """The CustomEmbedding is used by the electricity dataset and app flow dataset for long range forecasting."""
+
+
 class CustomEmbedding(nn.Module):
     def __init__(self, c_in, d_model, temporal_size, seq_num, dropout=0.1):
         super(CustomEmbedding, self).__init__()
@@ -99,28 +104,33 @@ class CustomEmbedding(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, x_mark):
-        x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark[:, :, :-1])\
+        x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark[:, :, :-1]) \
             + self.seqid_embedding(x_mark[:, :, -1].long())
 
         return self.dropout(x)
 
+
 """The SingleStepEmbedding is used by all datasets for single step forecasting."""
+
+
 class SingleStepEmbedding(nn.Module):
     def __init__(self, cov_size, num_seq, d_model, input_size, device):
         super().__init__()
 
         self.cov_size = cov_size
         self.num_class = num_seq
-        self.cov_emb = nn.Linear(cov_size+1, d_model)
-        padding = 1 if torch.__version__>='1.5.0' else 2
-        self.data_emb = nn.Conv1d(in_channels=1, out_channels=d_model, kernel_size=3, padding=padding, padding_mode='circular')
+        self.cov_emb = nn.Linear(cov_size + 1, d_model)
+        padding = 1 if torch.__version__ >= '1.5.0' else 2
+        self.data_emb = nn.Conv1d(in_channels=1, out_channels=d_model, kernel_size=3, padding=padding,
+                                  padding_mode='circular')
 
         self.position = torch.arange(input_size, device=device).unsqueeze(0)
-        self.position_vec = torch.tensor([math.pow(10000.0, 2.0 * (i // 2) / d_model) for i in range(d_model)], device=device)
+        self.position_vec = torch.tensor([math.pow(10000.0, 2.0 * (i // 2) / d_model) for i in range(d_model)],
+                                         device=device)
 
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight,mode='fan_in',nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight)
                 nn.init.constant_(m.bias, 0)
@@ -136,11 +146,11 @@ class SingleStepEmbedding(nn.Module):
         return result
 
     def forward(self, x):
-        covs = x[:, :, 1:(1+self.cov_size)]
+        covs = x[:, :, 1:(1 + self.cov_size)]
         seq_ids = ((x[:, :, -1] / self.num_class) - 0.5).unsqueeze(2)
         covs = torch.cat([covs, seq_ids], dim=-1)
         cov_embedding = self.cov_emb(covs)
-        data_embedding = self.data_emb(x[:, :, 0].unsqueeze(2).permute(0, 2, 1)).transpose(1,2)
+        data_embedding = self.data_emb(x[:, :, 0].unsqueeze(2).permute(0, 2, 1)).transpose(1, 2)
         embedding = cov_embedding + data_embedding
 
         position = self.position.repeat(len(x), 1).to(x.device)
@@ -244,7 +254,7 @@ class PositionwiseFeedForward(nn.Module):
         self.w_2 = nn.Linear(d_hid, d_in)
 
         self.layer_norm = nn.LayerNorm(d_in, eps=1e-6)
-        #self.layer_norm = GraphNorm(d_in)
+        # self.layer_norm = GraphNorm(d_in)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -289,7 +299,7 @@ def get_mask(input_size, window_size, inner_size, device):
         start = sum(all_size[:layer_idx])
         for i in range(start, start + all_size[layer_idx]):
             left_side = (start - all_size[layer_idx - 1]) + (i - start) * window_size[layer_idx - 1]
-            if i == ( start + all_size[layer_idx] - 1):
+            if i == (start + all_size[layer_idx] - 1):
                 right_side = start
             else:
                 right_side = (start - all_size[layer_idx - 1]) + (i - start + 1) * window_size[layer_idx - 1]
@@ -325,7 +335,7 @@ def get_subsequent_mask(input_size, window_size, predict_step, truncate):
     if truncate:
         mask = torch.zeros(predict_step, input_size + predict_step)
         for i in range(predict_step):
-            mask[i][:input_size+i+1] = 1
+            mask[i][:input_size + i + 1] = 1
         mask = (1 - mask).bool().unsqueeze(0)
     else:
         all_size = []
@@ -336,7 +346,7 @@ def get_subsequent_mask(input_size, window_size, predict_step, truncate):
         all_size = sum(all_size)
         mask = torch.zeros(predict_step, all_size + predict_step)
         for i in range(predict_step):
-            mask[i][:all_size+i+1] = 1
+            mask[i][:all_size + i + 1] = 1
         mask = (1 - mask).bool().unsqueeze(0)
 
     return mask
@@ -368,38 +378,40 @@ def get_q_k(input_size, window_size, stride, device):
         mask[i, -1] = i // stride + input_size
         mask[i][mask[i] > third_start - 1] = third_start - 1
     for i in range(second_length):
-        mask[input_size+i, 0:window_size] = input_size + i + torch.arange(window_size) - window_size // 2
-        mask[input_size+i, mask[input_size+i] < input_size] = -1
-        mask[input_size+i, mask[input_size+i] > third_start - 1] = -1
+        mask[input_size + i, 0:window_size] = input_size + i + torch.arange(window_size) - window_size // 2
+        mask[input_size + i, mask[input_size + i] < input_size] = -1
+        mask[input_size + i, mask[input_size + i] > third_start - 1] = -1
 
         if i < second_length - 1:
-            mask[input_size+i, window_size:(window_size+stride)] = torch.arange(stride) + i * stride
+            mask[input_size + i, window_size:(window_size + stride)] = torch.arange(stride) + i * stride
         else:
-            mask[input_size+i, window_size:(window_size+second_last)] = torch.arange(second_last) + i * stride
+            mask[input_size + i, window_size:(window_size + second_last)] = torch.arange(second_last) + i * stride
 
-        mask[input_size+i, -1] = i // stride + third_start
-        mask[input_size+i, mask[input_size+i] > fourth_start - 1] = fourth_start - 1
+        mask[input_size + i, -1] = i // stride + third_start
+        mask[input_size + i, mask[input_size + i] > fourth_start - 1] = fourth_start - 1
     for i in range(third_length):
-        mask[third_start+i, 0:window_size] = third_start + i + torch.arange(window_size) - window_size // 2
-        mask[third_start+i, mask[third_start+i] < third_start] = -1
-        mask[third_start+i, mask[third_start+i] > fourth_start - 1] = -1
+        mask[third_start + i, 0:window_size] = third_start + i + torch.arange(window_size) - window_size // 2
+        mask[third_start + i, mask[third_start + i] < third_start] = -1
+        mask[third_start + i, mask[third_start + i] > fourth_start - 1] = -1
 
         if i < third_length - 1:
-            mask[third_start+i, window_size:(window_size+stride)] = input_size + torch.arange(stride) + i * stride
+            mask[third_start + i, window_size:(window_size + stride)] = input_size + torch.arange(stride) + i * stride
         else:
-            mask[third_start+i, window_size:(window_size+third_last)] = input_size + torch.arange(third_last) + i * stride
+            mask[third_start + i, window_size:(window_size + third_last)] = input_size + torch.arange(
+                third_last) + i * stride
 
-        mask[third_start+i, -1] = i // stride + fourth_start
-        mask[third_start+i, mask[third_start+i] > full_length - 1] = full_length - 1
+        mask[third_start + i, -1] = i // stride + fourth_start
+        mask[third_start + i, mask[third_start + i] > full_length - 1] = full_length - 1
     for i in range(fourth_length):
-        mask[fourth_start+i, 0:window_size] = fourth_start + i + torch.arange(window_size) - window_size // 2
-        mask[fourth_start+i, mask[fourth_start+i] < fourth_start] = -1
-        mask[fourth_start+i, mask[fourth_start+i] > full_length - 1] = -1
+        mask[fourth_start + i, 0:window_size] = fourth_start + i + torch.arange(window_size) - window_size // 2
+        mask[fourth_start + i, mask[fourth_start + i] < fourth_start] = -1
+        mask[fourth_start + i, mask[fourth_start + i] > full_length - 1] = -1
 
         if i < fourth_length - 1:
-            mask[fourth_start+i, window_size:(window_size+stride)] = third_start + torch.arange(stride) + i * stride
+            mask[fourth_start + i, window_size:(window_size + stride)] = third_start + torch.arange(stride) + i * stride
         else:
-            mask[fourth_start+i, window_size:(window_size+fourth_last)] = third_start + torch.arange(fourth_last) + i * stride
+            mask[fourth_start + i, window_size:(window_size + fourth_last)] = third_start + torch.arange(
+                fourth_last) + i * stride
 
     return mask
 
@@ -412,7 +424,7 @@ def get_k_q(q_k_mask):
     for i in range(len(q_k_mask)):
         for j in range(len(q_k_mask[0])):
             if q_k_mask[i, j] >= 0:
-                k_q_mask[i, j] = torch.where(q_k_mask[q_k_mask[i, j]] ==i )[0]
+                k_q_mask[i, j] = torch.where(q_k_mask[q_k_mask[i, j]] == i)[0]
 
     return k_q_mask
 
@@ -420,14 +432,17 @@ def get_k_q(q_k_mask):
 class EncoderLayer(nn.Module):
     """ Compose with two layers """
 
-    def __init__(self, d_model, d_inner, n_head, d_k, d_v, dropout=0.1, normalize_before=True, use_tvm=False, q_k_mask=None, k_q_mask=None):
+    def __init__(self, d_model, d_inner, n_head, d_k, d_v, dropout=0.1, normalize_before=True, use_tvm=False,
+                 q_k_mask=None, k_q_mask=None):
         super(EncoderLayer, self).__init__()
         self.use_tvm = use_tvm
         if use_tvm:
             from .PAM_TVM import PyramidalAttention
-            self.slf_attn = PyramidalAttention(n_head, d_model, d_k, d_v, dropout=dropout, normalize_before=normalize_before, q_k_mask=q_k_mask, k_q_mask=k_q_mask)
+            self.slf_attn = PyramidalAttention(n_head, d_model, d_k, d_v, dropout=dropout,
+                                               normalize_before=normalize_before, q_k_mask=q_k_mask, k_q_mask=k_q_mask)
         else:
-            self.slf_attn = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout, normalize_before=normalize_before)
+            self.slf_attn = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout,
+                                               normalize_before=normalize_before)
 
         self.pos_ffn = PositionwiseFeedForward(
             d_model, d_inner, dropout=dropout, normalize_before=normalize_before)
@@ -482,6 +497,7 @@ class ConvLayer(nn.Module):
 
 class Conv_Construct(nn.Module):
     """Convolution CSCM"""
+
     def __init__(self, d_model, window_size, d_inner):
         super(Conv_Construct, self).__init__()
         if not isinstance(window_size, list):
@@ -489,13 +505,13 @@ class Conv_Construct(nn.Module):
                 ConvLayer(d_model, window_size),
                 ConvLayer(d_model, window_size),
                 ConvLayer(d_model, window_size)
-                ])
+            ])
         else:
             self.conv_layers = nn.ModuleList([
                 ConvLayer(d_model, window_size[0]),
                 ConvLayer(d_model, window_size[1]),
                 ConvLayer(d_model, window_size[2])
-                ])
+            ])
         self.norm = nn.LayerNorm(d_model)
 
     def forward(self, enc_input):
@@ -515,6 +531,7 @@ class Conv_Construct(nn.Module):
 
 class Bottleneck_Construct(nn.Module):
     """Bottleneck convolution CSCM"""
+
     def __init__(self, d_model, window_size, d_inner):
         super(Bottleneck_Construct, self).__init__()
         if not isinstance(window_size, list):
@@ -522,7 +539,7 @@ class Bottleneck_Construct(nn.Module):
                 ConvLayer(d_inner, window_size),
                 ConvLayer(d_inner, window_size),
                 ConvLayer(d_inner, window_size)
-                ])
+            ])
         else:
             self.conv_layers = []
             for i in range(len(window_size)):
@@ -551,6 +568,7 @@ class Bottleneck_Construct(nn.Module):
 
 class MaxPooling_Construct(nn.Module):
     """Max pooling CSCM"""
+
     def __init__(self, d_model, window_size, d_inner):
         super(MaxPooling_Construct, self).__init__()
         if not isinstance(window_size, list):
@@ -558,13 +576,13 @@ class MaxPooling_Construct(nn.Module):
                 nn.MaxPool1d(kernel_size=window_size),
                 nn.MaxPool1d(kernel_size=window_size),
                 nn.MaxPool1d(kernel_size=window_size)
-                ])
+            ])
         else:
             self.pooling_layers = nn.ModuleList([
                 nn.MaxPool1d(kernel_size=window_size[0]),
                 nn.MaxPool1d(kernel_size=window_size[1]),
                 nn.MaxPool1d(kernel_size=window_size[2])
-                ])
+            ])
         self.norm = nn.LayerNorm(d_model)
 
     def forward(self, enc_input):
@@ -584,6 +602,7 @@ class MaxPooling_Construct(nn.Module):
 
 class AvgPooling_Construct(nn.Module):
     """Average pooling CSCM"""
+
     def __init__(self, d_model, window_size, d_inner):
         super(AvgPooling_Construct, self).__init__()
         if not isinstance(window_size, list):
@@ -591,13 +610,13 @@ class AvgPooling_Construct(nn.Module):
                 nn.AvgPool1d(kernel_size=window_size),
                 nn.AvgPool1d(kernel_size=window_size),
                 nn.AvgPool1d(kernel_size=window_size)
-                ])
+            ])
         else:
             self.pooling_layers = nn.ModuleList([
                 nn.AvgPool1d(kernel_size=window_size[0]),
                 nn.AvgPool1d(kernel_size=window_size[1]),
                 nn.AvgPool1d(kernel_size=window_size[2])
-                ])
+            ])
         self.norm = nn.LayerNorm(d_model)
 
     def forward(self, enc_input):
@@ -639,10 +658,10 @@ class Decoder(nn.Module):
 
         self.layers = nn.ModuleList([
             DecoderLayer(opt.d_model, opt.d_inner_hid, opt.n_head, opt.d_k, opt.d_v, dropout=opt.dropout, \
-                normalize_before=False),
+                         normalize_before=False),
             DecoderLayer(opt.d_model, opt.d_inner_hid, opt.n_head, opt.d_k, opt.d_v, dropout=opt.dropout, \
-                normalize_before=False)
-            ])
+                         normalize_before=False)
+        ])
 
         if opt.embed_type == 'CustomEmbedding':
             self.dec_embedding = CustomEmbedding(opt.enc_in, opt.d_model, opt.covariate_size, opt.seq_num, opt.dropout)
@@ -673,7 +692,7 @@ class Encoder(nn.Module):
         if opt.decoder == 'attention':
             self.mask, self.all_size = get_mask(self.input_size, opt.window_size, opt.inner_size, opt.device)
         else:
-            self.mask, self.all_size = get_mask(self.input_size+1, opt.window_size, opt.inner_size, opt.device)
+            self.mask, self.all_size = get_mask(self.input_size + 1, opt.window_size, opt.inner_size, opt.device)
         self.decoder_type = opt.decoder
         if opt.decoder == 'FC':
             self.indexes = refer_points(self.all_size, opt.window_size, opt.device)
@@ -685,13 +704,14 @@ class Encoder(nn.Module):
             k_q_mask = get_k_q(q_k_mask)
             self.layers = nn.ModuleList([
                 EncoderLayer(opt.d_model, opt.d_inner_hid, opt.n_head, opt.d_k, opt.d_v, dropout=opt.dropout, \
-                    normalize_before=False, use_tvm=True, q_k_mask=q_k_mask, k_q_mask=k_q_mask) for i in range(opt.n_layer)
-                ])
+                             normalize_before=False, use_tvm=True, q_k_mask=q_k_mask, k_q_mask=k_q_mask) for i in
+                range(opt.n_layer)
+            ])
         else:
             self.layers = nn.ModuleList([
                 EncoderLayer(opt.d_model, opt.d_inner_hid, opt.n_head, opt.d_k, opt.d_v, dropout=opt.dropout, \
-                    normalize_before=False) for i in range(opt.n_layer)
-                ])
+                             normalize_before=False) for i in range(opt.n_layer)
+            ])
 
         if opt.embed_type == 'CustomEmbedding':
             self.enc_embedding = CustomEmbedding(opt.enc_in, opt.d_model, opt.covariate_size, opt.seq_num, opt.dropout)
@@ -753,12 +773,6 @@ class Model(nn.Module):
                 type_prediction: batch*seq_len*num_classes (not normalized);
                 time_prediction: batch*seq_len.
         """
-        if self.revin:
-            means = x_enc.mean(1, keepdim=True).detach() # N, 1, C
-            x_seq = x_enc - means
-            stdev = torch.sqrt(torch.var(x_seq, dim=1, keepdim=True, unbiased=False) + 1e-5) # N, 1, C
-            x_seq /= stdev
-
         # Add a predict token into the history sequence
         predict_token = torch.zeros(x_enc.size(0), 1, x_enc.size(-1), device=self.device)
         x_enc = torch.cat([x_enc, predict_token], dim=1)
@@ -775,8 +789,5 @@ class Model(nn.Module):
         elif self.decoder_type == 'FC':
             enc_output = self.encoder(x_enc, x_mark_enc)[:, -1, :]
             pred = self.predictor(enc_output).view(enc_output.size(0), self.predict_step, -1)
-
-        if self.revin:
-            pred = pred * stdev + means
 
         return pred

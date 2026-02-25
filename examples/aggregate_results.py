@@ -32,19 +32,21 @@ def parse_single_results(results_path, item_csv):
     metrics_cols = result_df.columns[~result_df.columns.isin(['user_id'])]
     mapping = item_csv[['group_name']].to_dict()
     result_df['group_name'] = result_df['user_id'].map(mapping['group_name'])
-    # compute per df agg stats
-    mean_df = result_df.groupby(['group_name'])[metrics_cols].mean().reset_index()
-    std_df = result_df.groupby(['group_name'])[metrics_cols].std().reset_index()
-    median_df = result_df.groupby(['group_name'])[metrics_cols].median().reset_index()
+    result_df = result_df.rename(columns={'user_id': 'item_id'})
 
-    full_results_dict = {
-        'original': result_df,
-        'mean': mean_df,
-        'std': std_df,
-        'median': median_df
-    }
+    # # compute per df agg stats
+    # mean_df = result_df.groupby(['group_name'])[metrics_cols].mean().reset_index()
+    # std_df = result_df.groupby(['group_name'])[metrics_cols].std().reset_index()
+    # median_df = result_df.groupby(['group_name'])[metrics_cols].median().reset_index()
 
-    return full_results_dict
+    # full_results_dict = {
+    #     'original': result_df,
+    #     'mean': mean_df,
+    #     'std': std_df,
+    #     'median': median_df
+    # }
+
+    return result_df
 
 
 def main():
@@ -58,7 +60,7 @@ def main():
         "--models",
         nargs='+',
         type=str,
-        default=['chronos', 'tirex', 'timesfm', 'patchtst', 'dlinear', 'crossformer', 'pyraformer', 'tsmixer',
+        default=['chronos', 'tirex', 'timesfm', 'patchtst', 'dlinear', 'crossformer', 'tsmixer',
                  'itransformer', 'snaive', 'es']
     )
     parser.add_argument(
@@ -79,7 +81,7 @@ def main():
     parser.add_argument(
         "--item_csv_path",
         type=str,
-        default='examples/item_clusters.csv'
+        default='examples/item_csv.csv'
     )
     parser.add_argument(
         "--output_dir",
@@ -107,9 +109,7 @@ def main():
         else:
             print(f"Model {model} does not exist in the input directory, SKIPPING!!!!")
 
-    results_std_dfs = {}
-    results_mean_dfs = {}
-    results_median_dfs = {}
+    results_df_lst = []
     for model in models:
         setting = f'{args.lw}_{args.fh}_{args.features}'
         pattern = os.path.join(args.results_dir, model, setting, 'EVALUATE', 'ver_*')
@@ -130,30 +130,25 @@ def main():
                 f"Model {model} does not have any trials starts with ver_ in the input directory {pattern}, SKIPPING!!!!")
             continue
 
-        results_df_dict = parse_single_results(results_path, item_csv)
-        results_mean_dfs[model] = results_df_dict['mean']
-        results_median_dfs[model] = results_df_dict['median']
-        results_std_dfs[model] = results_df_dict['std']
+        results_df = parse_single_results(results_path, item_csv)
+        results_df['model'] = model
+        results_df_lst.append(results_df)
 
-    result_std_df = pd.concat(results_std_dfs, names=['model']).reset_index(level=0)
-    result_mean_df = pd.concat(results_mean_dfs, names=['model']).reset_index(level=0)
-    result_median_df = pd.concat(results_median_dfs, names=['model']).reset_index(level=0)
-
+    final_df = pd.concat(results_df_lst, axis=0)
     # calculate rank for each metric
-    metric_names = result_mean_df.columns[~result_mean_df.columns.isin(['group_name', 'model'])]
+    metric_names = final_df.columns[~final_df.columns.isin(['group_name', 'model', 'item_id'])]
     for metric in metric_names:
-        result_mean_df[f'{metric}_rank'] = result_mean_df.groupby(['group_name'])[metric].rank(ascending=True)
-        result_median_df[f'{metric}_rank'] = result_median_df.groupby(['group_name'])[metric].rank(ascending=True)
+        final_df[f'{metric}_rank'] = final_df.groupby(['item_id'])[metric].rank(ascending=True)
+
+    final_df['trend_strength'] = final_df['group_name'].apply(lambda x: x.split('_')[0])
+    final_df['seasonal_strength'] = final_df['group_name'].apply(lambda x: x.split('_')[1])
+    final_df['forecastability'] = final_df['group_name'].apply(lambda x: x.split('_')[2])
 
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
-    result_std_df.to_csv(os.path.join(args.output_dir, f'results_std_df_{args.lw}_{args.fh}_{args.features}.csv'),
-                         index=False)
-    result_mean_df.to_csv(os.path.join(args.output_dir, f'results_mean_df_{args.lw}_{args.fh}_{args.features}.csv'),
-                          index=False)
-    result_median_df.to_csv(os.path.join(args.output_dir, f'results_median_df_{args.lw}_{args.fh}_{args.features}.csv'),
-                            index=False)
+    final_df.to_csv(os.path.join(args.output_dir, f'results_df_{args.lw}_{args.fh}_{args.features}.csv'),
+                    index=False)
 
     print(f'Aggregating results for {args.lw}_{args.fh}_{args.features} done. Results saved to {args.output_dir}')
 

@@ -49,6 +49,7 @@ class TimesFMV2p5(TimeSeriesModel):
         super().__init__(config, local_rank)
         self.config = config
         self.model = None
+        self.use_revin = False # built-in revin
 
     def eval_step(self, batch: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
         """

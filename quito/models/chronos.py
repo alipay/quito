@@ -68,6 +68,7 @@ class ChronosV2(TimeSeriesModel):
         super().__init__(config, local_rank)
         self.model = None
         self.pipeline = None
+        self.use_revin = False # chronos has builtin revin
 
     def forward(self, x: torch.Tensor, y: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """

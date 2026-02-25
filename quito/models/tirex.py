@@ -48,6 +48,7 @@ class TiRex(TimeSeriesModel):
         """
         super().__init__(config, local_rank)
         self.model = None
+        self.use_revin = False # built-in revin
 
     def forward(self, x: torch.Tensor, y: torch.Tensor = None, **kwargs) -> torch.Tensor:
         """
