@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+"""
+Evaluation script for time series forecasting models.
+
+This script evaluates trained models on test data using Ray for distributed
+evaluation across multiple GPUs. It uses YAML configuration files for all
+evaluation parameters.
+
+Usage:
+    python quito/scripts/evaluate.py \\
+        --config_path configs/evaluate/patchtst/config.yaml \\
+        --num_processes 2
+"""
+import os
+import argparse
+import logging
+import sys
+from pathlib import Path
+import torch
+from omegaconf import OmegaConf, DictConfig
+from torch.utils.data import DataLoader
+import ray
+from typing import Dict, Any
+import traceback
+from copy import deepcopy
+import time
+import json
+from statistics import mean
+
+from quito.config import AutoConfig
+from quito.config.training import TaskType, ModeType
+from quito.models import AutoModel
+from quito.utils.distributed import setup
+from quito.utils.common import set_seed
+from quito.datasets import load_datasets
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Test time series forecasting models using YAML configuration",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+    Examples:
+        """
+    )
+
+    parser.add_argument(
+        "--config_path",
+        type=str,
+        required=True,
+        help="Path to YAML config file (required)"
+    )
+    parser.add_argument(
+        "--num_processes",
+        type=int,
+        required=False,
+        default=1
+    )
+    parser.add_argument(
+        "--use_gpu",
+        type=int,
+        default=1,
+        help="Whether to use GPU (0 or 1)"
+    )
+
+    return parser.parse_args()
+
+
+@ray.remote
+class ModelEvaluator:
+    """
+    Ray Actor for distributed model evaluation.
+
+    Keeps model in GPU memory across multiple evaluations.
+    """
+
+    def __init__(self, model_config: DictConfig, training_config: DictConfig):
+        """Initialize actor with model loaded once."""
+        # Set seed
+        set_seed(training_config.seed)
+        # Load model once (stays in GPU memory)
+        self.model = AutoModel.from_config(model_config, local_rank=-1)
+        # load from checkpoint
+        # setup evaluation metrics
+        # Setup device
+        if torch.cuda.is_available():
+            self.device = 'cuda:0'
+        else:
+            self.device = 'cpu'
+
+        self.model.device = self.device
+        self.model = self.model.to(self.device)
+        self.model.metrics = training_config.eval_metrics
+
+        # Store config
+        self.training_config = training_config
+        self.batch_size = training_config.eval_batch_size
+
+        # Tracking statistics
+        self.eval_count = 0
+        self.total_time = 0
+
+    def evaluate_user(self, user_id: int, dataset: Any) -> Dict[str, float]:
+        """
+        Evaluate a single user's dataset.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Dictionary of metrics
+        """
+        try:
+            start_time = time.time()
+            # get data
+            dataset = deepcopy(dataset)
+            # modify dataset inplace to create user-specific dataset
+            dataset.select_user_data(user_id)
+            # Create dataloader
+            dl = DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.training_config.num_workers  # number of dataset workers
+            )
+
+            # Initialize metrics
+            total_loss_dict = {}
+            n_samples = 0
+
+            # Evaluate batches
+            with torch.no_grad():
+                for batch_idx, batch in enumerate(dl):
+                    # Evaluate step
+                    loss_dict, predictions = self.model.eval_step(batch)
+                    batch_size = len(predictions)
+
+                    # Accumulate losses
+                    for k, v in loss_dict.items():
+                        v = v.item() if torch.is_tensor(v) else v
+                        v_scaled = v * batch_size
+
+                        if k.name not in total_loss_dict:
+                            total_loss_dict[k.name] = v_scaled
+                        else:
+                            total_loss_dict[k.name] += v_scaled
+
+                    n_samples += batch_size
+
+            # Average metrics
+            avg_metrics = {}
+            for k, v in total_loss_dict.items():
+                avg_metrics[k] = v / n_samples if n_samples > 0 else 0.0
+
+            # Update tracking
+            elapsed = time.time() - start_time
+            self.eval_count += 1
+            self.total_time += elapsed
+
+            print(
+                f"Evaluated user {user_id}: {avg_metrics} "
+                f"(took {elapsed:.2f}s)"
+            )
+
+            return {
+                "user_id": user_id,
+                "metrics": avg_metrics,
+                "n_samples": n_samples,
+                "eval_time": elapsed
+            }
+
+        except Exception as e:
+            logging.error(f"Error evaluating user {user_id}: {str(e)}")
+            logging.error(f"[User id {user_id}] Traceback:\n{traceback.format_exc()}")
+
+            return {
+                "user_id": user_id,
+                "metrics": {},
+                "n_samples": 0,
+                "eval_time": 0
+            }
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get actor statistics."""
+        return {
+            "eval_count": self.eval_count,
+            "total_time": self.total_time,
+            "avg_time_per_eval": self.total_time / self.eval_count if self.eval_count > 0 else 0
+        }
+
+
+def main():
+    """Main testing function."""
+    args = parse_args()
+    # get evaluation setup
+    config, output_dir = setup(args.config_path, mode=TaskType.EVALUATE)
+    # load config
+    data_config, model_config, training_config = AutoConfig.from_config(config=config, rank=-1, world_size=-1,
+                                                                        local_rank=-1)
+    num_workers = max(1, args.num_processes)
+    if args.use_gpu:
+        # initialize ray cluster for distributed training
+        ray.init(num_gpus=args.num_processes)
+    else:
+        ray.init(num_cpus=args.num_processes)
+
+    try:
+        datasets = load_datasets(
+            data_config=data_config,
+            task=TaskType.EVALUATE,
+            mode=ModeType.TEST,
+            cleanup=False,
+            concat=False,
+        )
+        dataset_refs = [ray.put(ds) for ds in datasets]
+        if args.use_gpu:
+            evaluator_cls = ModelEvaluator.options(num_gpus=1)
+        else:
+            evaluator_cls = ModelEvaluator.options(num_cpus=1)
+
+        ckpts = model_config.checkpoint_path
+        assert ckpts, 'One of checkpoint_path or pretrained_model_name_or_path must be provided'
+        if isinstance(ckpts, str):
+            ckpts = [ckpts]
+
+        # support multiple checkpoints
+        results_dict = {}
+        for i, ckpt in enumerate(ckpts):
+            # Create evaluator actors (one per GPU) from scratch for each ckpt
+            logging.info(f"Creating {num_workers} evaluator actors for checkpoint {ckpt}")
+            model_config.checkpoint_path = ckpt
+            evaluators = [
+                evaluator_cls.remote(model_config, training_config)
+                for _ in range(num_workers)
+            ]
+
+            # Prepare evaluation tasks
+            tasks = []
+            for dataset_idx, dataset in enumerate(datasets):
+                user_ids = sorted(dataset.get_all_ids())
+                for user_id in user_ids:
+                    tasks.append((dataset_idx, int(user_id)))
+
+            logging.info(f"Total tasks to evaluate: {len(tasks)}")
+
+            # Distribute tasks round-robin across evaluators
+            futures = []
+            results_metadata = {}
+            for task_idx, (dataset_idx, user_id) in enumerate(tasks):
+                evaluator_id = task_idx % num_workers
+                evaluator = evaluators[evaluator_id]
+                future = evaluator.evaluate_user.remote(user_id, dataset_refs[dataset_idx])
+                futures.append(future)
+                results_metadata[len(futures) - 1] = {
+                    "dataset_idx": dataset_idx,
+                    "user_id": user_id,
+                    "evaluator_id": evaluator_id
+                }
+
+            # Collect results with progress tracking
+            logging.info("Starting evaluation")
+            for future_idx, future in enumerate(futures):
+                result = ray.get(future)  # 5 min timeout per task
+                if result['user_id'] in results_dict:
+                    results_dict[result['user_id']].append(result)
+                else:
+                    results_dict[result['user_id']] = [result]
+
+                if (future_idx + 1) % max(1, len(futures) // 10) == 0:
+                    logging.info(f"Progress: {future_idx + 1}/{len(futures)} evaluations complete")
+
+        results_lst = []
+        for _, results in results_dict.items():
+            agg_dict = {}
+            for k in results[0]:
+                if k == 'metrics':
+                    metric_dict = {}
+                    for metric in results[0]['metrics']:
+                        metric_dict[metric] = mean([r['metrics'][metric] for r in results])
+
+                    agg_dict[k] = metric_dict
+                else:
+                    agg_dict[k] = mean([r[k] for r in results])
+
+            results_lst.append(agg_dict)
+
+        model_name = model_config.model_name
+        with open(os.path.join(output_dir, f'eval_results_{model_name}.json'), 'w') as f:
+            final_results = {'final_results': results_lst, 'model_name': model_name}
+            json.dump(final_results, f)
+
+    finally:
+        ray.shutdown()
+        logging.info("Ray cluster shut down")
+
+
+if __name__ == "__main__":
+    main()

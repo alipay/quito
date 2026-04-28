@@ -1,0 +1,61 @@
+# python >= 3.11
+# Core dependencies
+torch>=2.8.0
+torchvision>=0.23.0
+numpy>=2.2.6
+pandas>=2.2.3
+scipy>=1.16.3
+scikit-learn>=1.8.0
+
+# Deep learning and training
+transformers>=4.57.1
+datasets>=4.5.0
+accelerate>=1.12.0
+deepspeed>=0.18.2
+tensorboard>=2.14.0
+ray>=2.51.1
+
+# Time series specific
+statsmodels>=0.14.6
+tslearn>=0.7.0
+dtaidistance>=2.3.13
+pyts>=0.13.0
+
+# Data processing and visualization
+matplotlib>=3.10.8
+seaborn>=0.13.2
+plotly>=6.5.2
+bokeh>=3.8.2
+
+# Utilities
+tqdm>=4.67.1
+pyyaml>=6.0
+click>=8.1.8
+rich>=14.1.0
+omegaconf>=2.3.0
+einops>=0.8.1
+pyarrow>=22.0.0
+
+# Evaluation and metrics
+scikit-image>=0.19.0
+opencv-python>=4.5.0
+# fid-score>=0.3.0
+lpips>=0.1.4
+
+# Optional: JAX support for some models
+# jax>=0.4.0
+# jaxlib>=0.4.0
+# flax>=0.6.0
+
+# Development dependencies (optional)
+pytest>=6.0.0
+pytest-cov>=2.12.0
+black>=22.0.0
+isort>=5.10.0
+flake8>=3.9.0
+mypy>=0.950
+
+# chronos support
+chronos-forecasting>=2.0
+# for tirex support, install from githunb
+# for timesFM support, install from github

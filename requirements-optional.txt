@@ -1,0 +1,54 @@
+# Optional dependencies for specific time series foundation models
+# and advanced dataset analysis features
+# Install only what you need
+
+# ==============================================================================
+# Amazon Chronos
+# ==============================================================================
+# For using Chronos time series foundation model
+# Install with: pip install git+https://github.com/amazon-science/chronos-forecasting.git
+
+# ==============================================================================
+# Salesforce Moirai
+# ==============================================================================
+# For using Moirai time series foundation model
+# Install with: pip install uni2ts
+
+# ==============================================================================
+# Other Hugging Face Models
+# ==============================================================================
+# Most Hugging Face time series models work with the base transformers library
+# already included in requirements.txt. Some may require additional packages:
+# - google/timesfm: No additional dependencies
+# - Additional model-specific requirements will be documented as needed
+
+# ==============================================================================
+# Dataset Quality Analysis Toolkit
+# ==============================================================================
+# For advanced dataset quality evaluation (forecastability, seasonality, etc.)
+# Core functionality works with just numpy + scipy (already in requirements.txt)
+# 
+# For full features:
+statsmodels>=0.14.0  # For seasonality strength (STL decomposition)
+arch>=6.0.0          # For ADF stationarity test
+matplotlib>=3.7.0    # For plotting quality comparison charts
+#
+# Install with: pip install statsmodels arch matplotlib
+
+# ==============================================================================
+# Installation Examples
+# ==============================================================================
+# 
+# For Chronos only:
+#   pip install git+https://github.com/amazon-science/chronos-forecasting.git
+#
+# For Moirai only:
+#   pip install uni2ts
+#
+# For dataset quality analysis (full features):
+#   pip install statsmodels arch matplotlib
+#
+# For all optional features:
+#   pip install git+https://github.com/amazon-science/chronos-forecasting.git uni2ts statsmodels arch matplotlib
+#
+
