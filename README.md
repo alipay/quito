@@ -87,13 +87,11 @@ pip install statsmodels arch matplotlib
 ```
 ### Data Preparation
 
-Download data from ..., place the data in `examples/datasets/cluster_data`.
+Download data from https://huggingface.co/collections/hq-bench/quitobench place the data in `examples/datasets/cluster_data`.
 
 ### Model Preparation
 
-Download model checkpoints here and place them in `models/{model_name}` 
-where model_name is one of 
-['chronos', 'tirex', 'timesfm', 'itransformer', 'patchtst', 'dlinear', 'crossformer', ''].
+Prepare your Quito model checkpoints here and place them in `models/{model_name}`
 
 ## The QuitoBench Dataset
 
