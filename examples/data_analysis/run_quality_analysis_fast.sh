@@ -10,13 +10,13 @@
 #   bash run_quality_analysis_fast.sh
 #   
 #   Or from project root:
-#   bash examples/run_quality_analysis_fast.sh
+#   bash examples/data_analysis/run_quality_analysis_fast.sh
 ################################################################################
 
 # Configuration
 # Get the project root directory (parent of examples/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Paths relative to project root
 DATA_DIR="examples/datasets/parquet_data/open_hour_train"
@@ -60,7 +60,7 @@ fi
 
 # Build command (run from project root)
 cd "$PROJECT_ROOT"
-CMD="python examples/analyze_open_hour_train_quality.py"
+CMD="python examples/data_analysis/analyze_open_hour_train_quality.py"
 CMD="$CMD --data_dir $DATA_DIR"
 CMD="$CMD --max_length $MAX_LENGTH"
 CMD="$CMD --max_series_per_file $MAX_SERIES_PER_FILE"

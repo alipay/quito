@@ -264,13 +264,13 @@ QUITO includes comprehensive tools for analyzing time series dataset quality:
 
 ```bash
 # Analyze individual dataset
-python examples/analyze_dataset_quality.py
+python examples/data_analysis/analyze_dataset_quality.py
 
 # Compare multiple datasets
-python examples/compare_datasets_quality.py
+python examples/data_analysis/compare_datasets_quality.py
 
 # Analyze your own parquet files
-python examples/analyze_open_hour_train_quality.py \
+python examples/data_analysis/analyze_open_hour_train_quality.py \
     --max_length 5000 \
     --max_series_per_file 50 \
     --sampling_strategy uniform
@@ -333,7 +333,7 @@ datasets/
 Generate sample data:
 
 ```bash
-python examples/create_data.py
+python examples/data_analysis/create_data.py
 ```
 
 ## Multi-GPU Training
@@ -366,16 +366,15 @@ torchrun --nproc_per_node 4 --nnodes 2 --node_rank 1 \
 
 ## Examples
 
-The `examples/` directory contains self-contained scripts:
+The `examples/data_analysis/` directory contains self-contained scripts:
 
 - `create_data.py`: Generate synthetic time series data
 - `analyze_dataset_quality.py`: Analyze dataset quality metrics
 - `compare_datasets_quality.py`: Compare multiple datasets
 - `analyze_open_hour_train_quality.py`: Analyze your own parquet files
-- `cluster_items_by_quality.py`: Cluster time series by quality
 - `build_cluster_files.py`: Build cluster-specific datasets
 
-See [examples/README.md](examples/README.md) for detailed information.
+See [examples/data_analysis/README.md](examples/data_analysis/README.md) for detailed information.
 
 ## Documentation
 
@@ -395,7 +394,7 @@ quito-10b/
 │   ├── evaluate/        # Evaluation configs
 │   └── tune/            # Hyperparameter tuning configs
 ├── docs/                # Documentation
-├── examples/            # Example scripts
+├── examples/            # Example scripts and data analysis tools
 ├── quito/              # Core package
 │   ├── config/         # Configuration classes
 │   ├── datasets.py     # Dataset loading
@@ -419,10 +418,10 @@ quito-10b/
 
 ```bash
 # Create sample data (from repo root)
-python examples/create_data.py
+python examples/data_analysis/create_data.py
 
 # Analyze data quality (from repo root)
-python examples/analyze_dataset_quality.py
+python examples/data_analysis/analyze_dataset_quality.py
 
 # Pre-train model
 quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml
@@ -481,7 +480,7 @@ pip install -r requirements-optional.txt  # For foundation models
 **FileNotFoundError: parquet file not found**
 ```bash
 # Generate sample data first
-python examples/create_data.py
+python examples/data_analysis/create_data.py
 ```
 
 **"RuntimeError: element 0 of tensors does not require grad"**

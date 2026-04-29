@@ -10,7 +10,7 @@ for lw in "${lws[@]}"; do
     for fh in "${fhs[@]}"; do
         for feature in "${features[@]}"; do
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: lw=$lw, fh=$fh, features=$feature"
-            python examples/aggregate_results.py --lw $lw --fh $fh --features $feature --item_csv_path 'examples/item_csv.csv'
+            python examples/data_analysis/aggregate_results.py --lw $lw --fh $fh --features $feature --item_csv_path 'examples/item_csv.csv'
             
             # Check exit status and report
             if [ $? -eq 0 ]; then

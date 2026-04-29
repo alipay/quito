@@ -17,20 +17,20 @@ Metrics computed:
 
 Usage:
     # Analyze all files with default settings (full length, all items, all indices)
-    python examples/analyze_open_hour_train_quality.py
+    python examples/data_analysis/analyze_open_hour_train_quality.py
 
     # Custom truncation and sampling for faster analysis
-    python examples/analyze_open_hour_train_quality.py \
+    python examples/data_analysis/analyze_open_hour_train_quality.py \
         --max_length 5000 \
         --max_series_per_file 100 \
         --sampling_strategy random
 
     # Analyze specific files
-    python examples/analyze_open_hour_train_quality.py \
+    python examples/data_analysis/analyze_open_hour_train_quality.py \
         --files hour_train_hour_p1.parquet hour_train_hour_p2.parquet
 
     # Disable Hurst exponent computation for speed
-    python examples/analyze_open_hour_train_quality.py --no-compute-hurst
+    python examples/data_analysis/analyze_open_hour_train_quality.py --no-compute-hurst
 
 Dependencies:
     Core: numpy, scipy, pandas
@@ -730,22 +730,22 @@ def main():
         epilog="""
 Examples:
   # Analyze all files with defaults (full length, all items, all indices)
-  python examples/analyze_open_hour_train_quality.py
+  python examples/data_analysis/analyze_open_hour_train_quality.py
 
   # Faster analysis with sampling
-  python examples/analyze_open_hour_train_quality.py \\
+  python examples/data_analysis/analyze_open_hour_train_quality.py \\
       --max_length 5000 \\
       --max_series_per_file 100
 
   # Analyze specific files
-  python examples/analyze_open_hour_train_quality.py \\
+  python examples/data_analysis/analyze_open_hour_train_quality.py \\
       --files hour_train_hour_p1.parquet hour_train_hour_p2.parquet
 
   # Skip Hurst exponent for faster analysis
-  python examples/analyze_open_hour_train_quality.py --no-compute-hurst
+  python examples/data_analysis/analyze_open_hour_train_quality.py --no-compute-hurst
 
   # Include ADF stationarity test (slow)
-  python examples/analyze_open_hour_train_quality.py --compute_adf
+  python examples/data_analysis/analyze_open_hour_train_quality.py --compute_adf
         """
     )
     

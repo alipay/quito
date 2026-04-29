@@ -14,7 +14,7 @@ All example scripts are **independent** and **self-contained** - no cross-depend
 Generate synthetic time series data for testing.
 
 ```bash
-python examples/create_data.py
+python examples/data_analysis/create_data.py
 ```
 
 **Outputs**:
@@ -30,7 +30,7 @@ python examples/create_data.py
 Analyze time series dataset quality with comprehensive metrics.
 
 ```bash
-python examples/analyze_dataset_quality.py
+python examples/data_analysis/analyze_dataset_quality.py
 ```
 
 **Features**:
@@ -56,7 +56,7 @@ pip install statsmodels arch matplotlib
 Compare quality across multiple time series datasets.
 
 ```bash
-python examples/compare_datasets_quality.py
+python examples/data_analysis/compare_datasets_quality.py
 ```
 
 **Features**:
@@ -82,16 +82,16 @@ Analyze dataset quality for your own parquet files in `open_hour_train/` directo
 
 ```bash
 # Analyze all files with default settings
-python examples/analyze_open_hour_train_quality.py
+python examples/data_analysis/analyze_open_hour_train_quality.py
 
 # Custom truncation and sampling
-python examples/analyze_open_hour_train_quality.py \
+python examples/data_analysis/analyze_open_hour_train_quality.py \
     --max_length 5000 \
     --max_series_per_file 50 \
     --sampling_strategy uniform
 
 # Analyze specific files
-python examples/analyze_open_hour_train_quality.py \
+python examples/data_analysis/analyze_open_hour_train_quality.py \
     --files hour_train_hour_p1.parquet hour_train_hour_p2.parquet
 ```
 
@@ -127,42 +127,42 @@ pip install statsmodels arch  # For full features
 Aggregate and analyze results from multiple experiments.
 
 ```bash
-python examples/aggregate_results.py
+python examples/data_analysis/aggregate_results.py
 ```
 
 #### `cluster_items_by_quality.py`
 Cluster time series items by their quality metrics.
 
 ```bash
-python examples/cluster_items_by_quality.py
+python examples/data_analysis/cluster_items_by_quality.py
 ```
 
 #### `build_cluster_files.py`
 Build cluster-specific dataset files.
 
 ```bash
-python examples/build_cluster_files.py
+python examples/data_analysis/build_cluster_files.py
 ```
 
 #### `merge_train_valid_test.py`
 Merge train, validation, and test datasets.
 
 ```bash
-python examples/merge_train_valid_test.py
+python examples/data_analysis/merge_train_valid_test.py
 ```
 
 #### `run_quality_analysis.sh`
 Shell script to run quality analysis in batch mode.
 
 ```bash
-bash examples/run_quality_analysis.sh
+bash examples/data_analysis/run_quality_analysis.sh
 ```
 
 #### `run_quality_analysis_fast.sh`
 Shell script to run fast quality analysis.
 
 ```bash
-bash examples/run_quality_analysis_fast.sh
+bash examples/data_analysis/run_quality_analysis_fast.sh
 ```
 
 ---
@@ -211,10 +211,10 @@ training:
 ### Quick Start
 ```bash
 # 1. Generate sample data
-python examples/create_data.py
+python examples/data_analysis/create_data.py
 
 # 2. Analyze data quality
-python examples/analyze_dataset_quality.py
+python examples/data_analysis/analyze_dataset_quality.py
 
 # 3. Pre-train a model
 quito-cli pretrain --config_path configs/pretrain/patchtst/config.yaml

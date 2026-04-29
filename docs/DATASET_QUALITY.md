@@ -239,7 +239,7 @@ Two example scripts are provided:
 
 ### Basic Analysis
 ```bash
-python examples/analyze_dataset_quality.py
+python examples/data_analysis/analyze_dataset_quality.py
 ```
 
 This demonstrates:
@@ -250,7 +250,7 @@ This demonstrates:
 
 ### Dataset Comparison
 ```bash
-python examples/compare_datasets_quality.py
+python examples/data_analysis/compare_datasets_quality.py
 ```
 
 This demonstrates:
@@ -366,6 +366,6 @@ This toolkit is inspired by:
 5. **Document**: Record quality metrics for reproducibility
 
 For more examples, see:
-- `examples/analyze_dataset_quality.py`
-- `examples/compare_datasets_quality.py`
+- `examples/data_analysis/analyze_dataset_quality.py`
+- `examples/data_analysis/compare_datasets_quality.py`
 

@@ -10,7 +10,7 @@
 #   bash run_quality_analysis.sh
 #   
 #   Or from project root:
-#   bash examples/run_quality_analysis.sh
+#   bash examples/data_analysis/run_quality_analysis.sh
 #
 # The script will:
 # - Run in background using nohup
@@ -22,7 +22,7 @@
 # Configuration
 # Get the project root directory (parent of examples/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Paths relative to project root
 DATA_DIR="examples/datasets/parquet_data/open_hour_train"
@@ -83,7 +83,7 @@ if [ -f "/opt/miniconda3/envs/llm/bin/python" ]; then
     echo "Using 'llm' conda environment python: $PYTHON_CMD"
 fi
 
-CMD="$PYTHON_CMD examples/analyze_open_hour_train_quality.py"
+CMD="$PYTHON_CMD examples/data_analysis/analyze_open_hour_train_quality.py"
 CMD="$CMD --data_dir $DATA_DIR"
 CMD="$CMD --max_length $MAX_LENGTH"
 CMD="$CMD --sampling_strategy $SAMPLING_STRATEGY"

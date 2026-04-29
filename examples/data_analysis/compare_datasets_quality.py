@@ -12,7 +12,7 @@ QualityScore combines:
 - Length (15%): Normalized by longest dataset
 
 Usage:
-    python examples/compare_datasets_quality.py
+    python examples/data_analysis/compare_datasets_quality.py
 
 Dependencies:
     Core: numpy, scipy

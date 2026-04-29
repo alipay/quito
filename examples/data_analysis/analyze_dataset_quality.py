@@ -14,7 +14,7 @@ Features:
 - ADF stationarity test (optional)
 
 Usage:
-    python examples/analyze_dataset_quality.py
+    python examples/data_analysis/analyze_dataset_quality.py
 
 Dependencies:
     Core: numpy, scipy
@@ -158,7 +158,7 @@ def example_load_real_data():
     
     if not data_path.exists():
         logger.warning(f"Data file not found: {data_path}")
-        logger.info("Run 'python examples/create_data.py' to generate sample data first.")
+        logger.info("Run 'python examples/data_analysis/create_data.py' to generate sample data first.")
         return
     
     # Load data
@@ -200,7 +200,7 @@ def main():
     logger.info("\nNext steps:")
     logger.info("  1. Analyze your own data with evaluate_dataset()")
     logger.info("  2. Compare multiple datasets with compare_datasets()")
-    logger.info("  3. See examples/compare_datasets_quality.py for cross-dataset comparison")
+    logger.info("  3. See examples/data_analysis/compare_datasets_quality.py for cross-dataset comparison")
 
 
 if __name__ == "__main__":
