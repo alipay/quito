@@ -267,6 +267,18 @@ class TiRexModelConfig(ModelConfig):
 
 
 @dataclass
+class SimonsModelConfig(ModelConfig):
+    """
+    Configuration for the Simons time series foundation models.
+    
+    Simons is a pre-trained foundation model for zero-shot forecasting. Its
+    architecture comes from the checkpoint named by checkpoint_path (a Hugging
+    Face id such as abel-lab/Simons-297M, or a local folder).
+    """
+    pass
+
+
+@dataclass
 class ITransformerModelConfig(ModelConfig):
     """
     Configuration for iTransformer model.

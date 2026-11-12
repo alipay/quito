@@ -34,12 +34,12 @@ QuitoBench aims to advance time series forecasting research by providing a large
 ## Features
 
 - **Billion-Scale Benchmark**: High-quality CloudOps time series data at unprecedented scale
-- **Multiple Model Support**: PatchTST, iTransformer, TSMixer, Crossformer, Pyraformer, DLinear, TiRex, Chronos, TimesFM
+- **Multiple Model Support**: PatchTST, iTransformer, TSMixer, Crossformer, Pyraformer, DLinear, TiRex, Chronos, TimesFM, Simons
 - **Unified Interface**: Consistent API across all models through YAML configuration
 - **Distributed Training**: Multi-GPU and multi-node support via PyTorch DistributedDataParallel
 - **Hyperparameter Tuning**: Built-in Ray Tune integration for efficient parameter search
 - **Dataset Quality Analysis**: Comprehensive tools for evaluating time series data quality
-- **Zero-Shot Inference**: Support for pre-trained foundation models (Chronos, TimesFM, TiRex)
+- **Zero-Shot Inference**: Support for pre-trained foundation models (Chronos, TimesFM, TiRex, Simons)
 - **Reproducible Benchmarks**: Standardized evaluation protocols and metrics
 
 ## Installation
@@ -81,6 +81,9 @@ pip install chronos-forecasting
 
 # TiRex-Zero
 # Follow instructions at: https://github.com/NX-AI/tirex/tree/main
+
+# Simons
+pip install "git+https://github.com/Abel-ai-lab/Simons"
 
 # Dataset quality analysis
 pip install statsmodels arch matplotlib
@@ -210,6 +213,7 @@ Configuration files are organized in `configs/`:
 - **Chronos-2**: Amazon's pre-trained foundation model
 - **TimesFM-2.5**: Google's time series foundation model
 - **TiRex-Zero**: NX-AI's zero-shot forecasting model
+- **Simons**: Abel AI Lab's zero-shot foundation models (25M, 60M, 178M, 297M)
 
 Note: Zero-shot models are for inference only and cannot be fine-tuned.
 
