@@ -12,3 +12,4 @@ from .crossformer import CrossFormer
 from .pyraformer import PyraFormer
 from .naive import NaiveForecaster
 from .es import ES
+from .simons import Simons

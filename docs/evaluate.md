@@ -43,3 +43,14 @@ Follow the instructions at https://github.com/NX-AI/tirex/tree/main to install t
 
 In config.yaml, set `model_name` to "TiRex". For local usage, set `pretrained_model_name_or_path` to 
 your downloaded directory. For online, set `pretrained_model_name_or_path` to "NX-AI/TiRex".
+
+### Simons
+
+```bash
+pip install "git+https://github.com/Abel-ai-lab/Simons"
+```
+
+In config.yaml, set `model_name` to "Simons" and `checkpoint_path` (not
+`pretrained_model_name_or_path`) to a Hugging Face id, one of "abel-lab/Simons-25M",
+"abel-lab/Simons-60M", "abel-lab/Simons-178M" or "abel-lab/Simons-297M", or to your downloaded
+directory. Ready configs: `configs/evaluate/simons_{25m,60m,178m,297m}/`.
